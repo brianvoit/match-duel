@@ -1,0 +1,2065 @@
+'use client';
+
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { TEAM_INFO, teamCode, teamFlag } from '@/lib/data/teamInfo';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Tournament = {
+  id: string;
+  label: string; // e.g. "FIFA World Cup '26"
+};
+
+type Matchup = {
+  matchupId: string;
+  inviteCode: string;
+  status: string;
+  tournamentId: string;
+  createdAt: string;
+  joinedAt: string;
+  opponentDisplayName: string | null;
+  opponentEmail: string | null;
+  opponentAvatarUrl: string | null;
+};
+
+type Round = {
+  id: string;
+  stage: string;
+  order_index: number;
+  is_complete: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+};
+
+type Fixture = {
+  id: string;
+  startsAt: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  status: string;
+  isLocked: boolean;
+  myPickSide: 'HOME' | 'AWAY' | null;
+  opponentPickSide: 'HOME' | 'AWAY' | null;
+  groupName: string | null;
+  venue: string | null;
+  city: string | null;
+};
+
+type ParticipantStanding = {
+  participantId: string;
+  appUserId: string;
+  displayName: string | null;
+  email: string;
+  tournamentPoints: number;
+  totalGoalsTiebreak: number;
+};
+
+type RoundResultParticipant = {
+  participantId: string;
+  displayName: string | null;
+  email: string;
+  points: number;
+  tiebreakGoals: number;
+};
+
+type RoundResultEntry = {
+  roundId: string;
+  stage: string;
+  orderIndex: number;
+  participants: RoundResultParticipant[];
+};
+
+type ContentTab = 'details' | 'squad' | 'recap';
+type DrawerTab = 'chat' | 'calendar' | 'tv' | 'alerts';
+type MobileView = 'feed' | 'content';
+type NoticeTone = 'ok' | 'error' | 'info';
+
+interface PlaygroundProps {
+  userEmail: string;
+  userAvatarUrl?: string | null;
+}
+
+// Stage points mirror WORLD_CUP_2026_SCORING (client-side outcome display only)
+const STAGE_POINTS: Record<string, number> = {
+  GROUP: 1,
+  ROUND_OF_32: 2,
+  ROUND_OF_16: 4,
+  QUARTERFINAL: 8,
+  SEMIFINAL: 8,
+  THIRD_PLACE: 16,
+  FINAL: 32
+};
+
+function computePickPoints(
+  fixture: Fixture,
+  pickedSide: 'HOME' | 'AWAY' | null,
+  stage: string
+): number | null {
+  if (fixture.status !== 'FINAL') return null;
+  if (fixture.homeScore === null || fixture.awayScore === null) return null;
+  if (!pickedSide) return 0;
+  if (fixture.homeScore === fixture.awayScore) return 1;
+  const winner = fixture.homeScore > fixture.awayScore ? 'HOME' : 'AWAY';
+  return winner === pickedSide ? (STAGE_POINTS[stage] ?? 1) : 0;
+}
+
+/** Groups fixtures into matchday buckets: a new matchday starts when there's
+ *  a gap of more than 2 days between consecutive fixture kick-offs. */
+function computeMatchdays(fixtures: { id: string; startsAt: string }[]): Map<string, number> {
+  const map = new Map<string, number>();
+  if (!fixtures.length) return map;
+  let matchday = 0;
+  let lastDay = '';
+  for (const f of fixtures) {
+    // Use UTC date string so kickoff times stored as UTC don't bleed into adjacent days
+    const day = new Date(f.startsAt).toISOString().slice(0, 10); // "2026-06-11"
+    if (day !== lastDay) { matchday++; lastDay = day; }
+    map.set(f.id, matchday);
+  }
+  return map;
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  GROUP:       'Group Stage',
+  ROUND_OF_32: 'Round of 32',
+  ROUND_OF_16: 'Round of 16',
+  QUARTERFINAL:'Quarter-Finals',
+  SEMIFINAL:   'Semi-Finals',
+  THIRD_PLACE: 'Third Place',
+  FINAL:       'Final',
+};
+
+function fmtStage(stage: string) {
+  return STAGE_LABELS[stage] ?? stage.replace(/_/g, ' ');
+}
+
+function StatusGlyph({ status, isLocked, size = 13 }: { status: string; isLocked: boolean; size?: number }) {
+  if (status === 'LIVE') {
+    return (
+      <span className="wc-status-glyph wc-status-glyph--live" aria-label="Live">
+        <span className="wc-status-dot" />
+        Live
+      </span>
+    );
+  }
+  if (status === 'FINAL') {
+    return <span className="wc-status-glyph wc-status-glyph--final" aria-label="Final">Final</span>;
+  }
+  if (status === 'POSTPONED' || status === 'CANCELED') {
+    return (
+      <span className="wc-status-glyph wc-status-glyph--canceled" aria-label={status}>
+        <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+      </span>
+    );
+  }
+  if (isLocked) {
+    return (
+      <span className="wc-status-glyph wc-status-glyph--locked" aria-label="Locked">
+        <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M4.5 6V4.5a2.5 2.5 0 015 0V6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      </span>
+    );
+  }
+  // Open
+  return (
+    <span className="wc-status-glyph wc-status-glyph--open" aria-label="Open">
+      <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M4.5 6V4a2.5 2.5 0 015 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    </span>
+  );
+}
+
+function initials(name: string | null | undefined, fallback = '?') {
+  const str = name?.trim();
+  if (!str) return fallback;
+  return str.charAt(0).toUpperCase();
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
+  // ── Layout state ───────────────────────────────────────────────────────────
+  const [leftNavOpen, setLeftNavOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
+  const [contentTab, setContentTab] = useState<ContentTab>('details');
+  const [mobileView, setMobileView] = useState<MobileView>('feed');
+  const [scoreChartOpen, setScoreChartOpen] = useState(false);
+
+  // ── Menu state ─────────────────────────────────────────────────────────────
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const [tournamentMenuOpen, setTournamentMenuOpen] = useState(false);
+  const tournamentMenuRef = useRef<HTMLDivElement>(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+
+  // ── UI state ───────────────────────────────────────────────────────────────
+  const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [joinCode, setJoinCode] = useState('');
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // ── Filter state ───────────────────────────────────────────────────────────
+  const [filterGroup, setFilterGroup] = useState<string | null>(null);
+  const [filterNoPick, setFilterNoPick] = useState(false);
+  const [filterPickable, setFilterPickable] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  // ── Data state ─────────────────────────────────────────────────────────────
+  const [matchups, setMatchups] = useState<Matchup[]>([]);
+  const [selectedMatchupId, setSelectedMatchupId] = useState<string>('');
+  const [selectedFixtureId, setSelectedFixtureId] = useState<string | null>(null);
+  const [currentRound, setCurrentRound] = useState<Round | null>(null);
+  const [allRounds, setAllRounds] = useState<Round[]>([]);
+  const [fixtures, setFixtures] = useState<Fixture[]>([]);
+  const [pickMap, setPickMap] = useState<Record<string, 'HOME' | 'AWAY'>>({});
+  const [pickOrder, setPickOrder] = useState<Record<string, string>>({});
+  const [myParticipantId, setMyParticipantId] = useState<string | null>(null);
+  const [standing, setStanding] = useState<ParticipantStanding[]>([]);
+  const [roundResults, setRoundResults] = useState<RoundResultEntry[]>([]);
+  const [displayName, setDisplayName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [defaultPickSide, setDefaultPickSide] = useState<'HOME' | 'AWAY'>('HOME');
+  const [savingDefaultPick, setSavingDefaultPick] = useState(false);
+  const [headToHead, setHeadToHead] = useState<{ year: number; stage: string; home: string; away: string; homeGoals: number | null; awayGoals: number | null }[]>([]);
+  const [h2hHome, setH2hHome] = useState<string>('');
+  const [h2hAway, setH2hAway] = useState<string>('');
+
+  // ── Derived ────────────────────────────────────────────────────────────────
+
+  // Unique tournaments derived from matchup data
+  // TODO: replace with /api/tournaments fetch once endpoint exists
+  const tournaments = useMemo<Tournament[]>(() => {
+    const seen = new Set<string>();
+    return matchups.reduce<Tournament[]>((acc, m) => {
+      if (!seen.has(m.tournamentId)) {
+        seen.add(m.tournamentId);
+        acc.push({ id: m.tournamentId, label: "FIFA World Cup '26" });
+      }
+      return acc;
+    }, []);
+  }, [matchups]);
+
+  const activeTournament = tournaments[0] ?? null;
+
+  const hasLiveFixtures = useMemo(
+    () => fixtures.some((f) => f.status === 'LIVE'),
+    [fixtures]
+  );
+
+  const canSubmit = useMemo(() => {
+    const unlocked = fixtures.filter((f) => !f.isLocked);
+    if (!unlocked.length) return false;
+    return unlocked.every((f) => Boolean(pickMap[f.id]));
+  }, [fixtures, pickMap]);
+
+  const pickedCount = useMemo(
+    () => fixtures.filter((f) => Boolean(pickMap[f.id])).length,
+    [fixtures, pickMap]
+  );
+
+  const lockedCount = useMemo(() => fixtures.filter((f) => f.isLocked).length, [fixtures]);
+
+  // Distinct groups present in the current fixture list, sorted
+  const availableGroups = useMemo(
+    () =>
+      [...new Set(fixtures.map((f) => f.groupName).filter(Boolean) as string[])].sort(),
+    [fixtures]
+  );
+
+  // Filtered view for the feed
+  const visibleFixtures = useMemo(() => {
+    return fixtures.filter((f) => {
+      if (filterGroup && f.groupName !== filterGroup) return false;
+      if (filterNoPick && (pickMap[f.id] ?? f.myPickSide)) return false;
+      if (filterPickable) {
+        // "Pickable only" = unlocked AND assigned to me
+        const hasPickOrder = Object.keys(pickOrder).length > 0;
+        const isMyFixture = !hasPickOrder || pickOrder[f.id] === myParticipantId;
+        if (f.isLocked || !isMyFixture) return false;
+      }
+      return true;
+    });
+  }, [fixtures, filterGroup, filterNoPick, filterPickable, pickMap, pickOrder, myParticipantId]);
+
+  const selectedMatchup = useMemo(
+    () => matchups.find((m) => m.matchupId === selectedMatchupId) ?? null,
+    [matchups, selectedMatchupId]
+  );
+
+  const oppAvatarUrl = selectedMatchup?.opponentAvatarUrl ?? null;
+
+  const selectedFixture = useMemo(
+    () => fixtures.find((f) => f.id === selectedFixtureId) ?? null,
+    [fixtures, selectedFixtureId]
+  );
+
+  // ── Notice ─────────────────────────────────────────────────────────────────
+
+  function showNotice(tone: NoticeTone, text: string) {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    setNotice({ tone, text });
+    noticeTimer.current = setTimeout(() => setNotice(null), 4000);
+  }
+
+  // ── Sign out ───────────────────────────────────────────────────────────────
+
+  const signOut = useCallback(async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.reload();
+  }, []);
+
+  // ── Effects ────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    function h(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node))
+        setUserMenuOpen(false);
+    }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [userMenuOpen]);
+
+  useEffect(() => {
+    if (!tournamentMenuOpen) return;
+    function h(e: MouseEvent) {
+      if (tournamentMenuRef.current && !tournamentMenuRef.current.contains(e.target as Node))
+        setTournamentMenuOpen(false);
+    }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [tournamentMenuOpen]);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    function h(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node))
+        setFilterOpen(false);
+    }
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [filterOpen]);
+
+  useEffect(() => {
+    // Load fixtures immediately (no matchup needed) so users see the schedule right away
+    loadCurrentRoundAndFixtures(undefined);
+    loadMatchups();
+    loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!selectedMatchupId) {
+      // Keep fixtures visible but clear pick/standing data
+      setPickMap({});
+      setPickOrder({});
+      setMyParticipantId(null);
+      setStanding([]);
+      setRoundResults([]);
+      return;
+    }
+    // Reload fixtures with pick data overlaid + load standings for topbar H2H
+    loadCurrentRoundAndFixtures(selectedMatchupId);
+    loadStandings(selectedMatchupId);
+    setMobileView('content');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMatchupId]);
+
+  // 30s live polling
+  useEffect(() => {
+    if (contentTab !== 'details' || !selectedMatchupId || !hasLiveFixtures) return;
+    const interval = setInterval(async () => {
+      const res = await fetch(`/api/matchups/${selectedMatchupId}/live`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const payload = await res.json();
+      if (!payload.ok) return;
+      const liveFixtures = (payload.fixtures ?? []) as Fixture[];
+      if (!liveFixtures.length) return;
+      setFixtures((prev) =>
+        prev.map((f) => {
+          const u = liveFixtures.find((lf) => lf.id === f.id);
+          if (!u) return f;
+          return {
+            ...f,
+            homeScore: u.homeScore,
+            awayScore: u.awayScore,
+            status: u.status,
+            isLocked: u.isLocked,
+            opponentPickSide: u.opponentPickSide ?? f.opponentPickSide
+          };
+        })
+      );
+    }, 30_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentTab, selectedMatchupId, hasLiveFixtures]);
+
+  // ── Data fetchers ──────────────────────────────────────────────────────────
+
+  async function loadProfile() {
+    const res = await fetch('/api/user/profile', { cache: 'no-store' });
+    if (!res.ok) return;
+    const payload = await res.json();
+    if (payload.ok) {
+      setDisplayName(payload.displayName ?? '');
+      setDefaultPickSide(payload.defaultPickSide ?? 'HOME');
+    }
+  }
+
+  async function loadMatchups() {
+    setLoading(true);
+    const res = await fetch('/api/matchups', { cache: 'no-store' });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) {
+      showNotice('error', payload.error ?? 'Failed to load matchups.');
+      setLoading(false);
+      return;
+    }
+    const rows = (payload.matchups ?? []) as Matchup[];
+    setMatchups(rows);
+    if (!selectedMatchupId && rows[0]?.matchupId) {
+      setSelectedMatchupId(rows[0].matchupId);
+    }
+    setLoading(false);
+  }
+
+  async function loadStandings(matchupId: string) {
+    const res = await fetch(`/api/matchups/${matchupId}/standings`, { cache: 'no-store' });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) return;
+    setStanding(payload.standing ?? []);
+    setRoundResults(payload.roundResults ?? []);
+  }
+
+  async function loadCurrentRoundAndFixtures(matchupId = selectedMatchupId) {
+    if (!matchupId) return;
+    setLoading(true);
+    const roundRes = await fetch(`/api/rounds/current?matchupId=${matchupId}`, {
+      cache: 'no-store'
+    });
+    const roundPayload = await roundRes.json();
+    if (!roundRes.ok || !roundPayload.ok) {
+      showNotice('error', roundPayload.error ?? 'Failed to load round.');
+      setLoading(false);
+      return;
+    }
+    const round = (roundPayload.currentRound as Round | null) ?? null;
+    setCurrentRound(round);
+    setAllRounds((roundPayload.rounds as Round[] | null) ?? []);
+    if (!round) {
+      setFixtures([]);
+      setPickMap({});
+      setLoading(false);
+      return;
+    }
+    const fixtureUrl = matchupId
+      ? `/api/rounds/${round.id}/fixtures?matchupId=${matchupId}`
+      : `/api/rounds/${round.id}/fixtures`;
+    const pickOrderUrl = matchupId
+      ? `/api/matchups/${matchupId}/rounds/${round.id}/pick-order`
+      : null;
+    const fetches: Promise<Response>[] = [fetch(fixtureUrl, { cache: 'no-store' })];
+    if (pickOrderUrl) fetches.push(fetch(pickOrderUrl, { cache: 'no-store' }));
+    const [fixtureRes, pickOrderRes] = await Promise.all(fetches);
+    const fixturePayload = await fixtureRes.json();
+    if (!fixtureRes.ok || !fixturePayload.ok) {
+      showNotice('error', fixturePayload.error ?? 'Failed to load fixtures.');
+      setLoading(false);
+      return;
+    }
+    const rows = (fixturePayload.fixtures ?? []) as Fixture[];
+    setFixtures(rows);
+    const nextPickMap: Record<string, 'HOME' | 'AWAY'> = {};
+    for (const f of rows) {
+      if (f.myPickSide) nextPickMap[f.id] = f.myPickSide;
+    }
+    setPickMap(nextPickMap);
+    if (pickOrderRes?.ok) {
+      const pickOrderPayload = await pickOrderRes.json();
+      if (pickOrderPayload.ok) {
+        const order: Record<string, string> = {};
+        for (const entry of pickOrderPayload.pickOrder ?? []) {
+          order[entry.fixtureId] = entry.firstPickerParticipantId;
+        }
+        setPickOrder(order);
+        setMyParticipantId(pickOrderPayload.myParticipantId ?? null);
+      }
+    }
+    setLoading(false);
+  }
+
+  async function createMatchup() {
+    setLoading(true);
+    const res = await fetch('/api/matchups/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) {
+      showNotice('error', payload.error ?? 'Failed to create matchup.');
+      setLoading(false);
+      return;
+    }
+    showNotice('ok', `Matchup created! Invite code: ${payload.matchup.inviteCode}`);
+    await loadMatchups();
+    setLoading(false);
+  }
+
+  async function joinMatchup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!joinCode.trim()) { showNotice('error', 'Enter an invite code.'); return; }
+    setLoading(true);
+    const code = joinCode.trim().toUpperCase();
+    const res = await fetch(`/api/matchups/invite/${code}/accept`, { method: 'POST' });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) {
+      showNotice('error', payload.error ?? 'Failed to join matchup.');
+      setLoading(false);
+      return;
+    }
+    setJoinCode('');
+    setJoinOpen(false);
+    showNotice('ok', payload.alreadyJoined ? 'Already in this matchup.' : 'Joined matchup!');
+    await loadMatchups();
+    setLoading(false);
+  }
+
+  async function submitPicks() {
+    if (!selectedMatchupId || !currentRound) {
+      showNotice('error', 'Select a matchup first.');
+      return;
+    }
+    const editableFixtures = fixtures.filter((f) => !f.isLocked);
+    const picks = editableFixtures
+      .map((f) => ({ fixtureId: f.id, side: pickMap[f.id] }))
+      .filter((p): p is { fixtureId: string; side: 'HOME' | 'AWAY' } => Boolean(p.side));
+    if (!picks.length) { showNotice('error', 'No unlocked picks selected.'); return; }
+    setLoading(true);
+    const res = await fetch(
+      `/api/matchups/${selectedMatchupId}/rounds/${currentRound.id}/picks`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ picks })
+      }
+    );
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) {
+      showNotice('error', payload.error ?? 'Failed to submit picks.');
+      setLoading(false);
+      return;
+    }
+    showNotice('ok', `${picks.length} picks saved!`);
+    await loadCurrentRoundAndFixtures();
+    setLoading(false);
+  }
+
+  async function submitSinglePick(fixtureId: string) {
+    if (!selectedMatchupId || !currentRound) {
+      showNotice('error', 'Select a matchup first.');
+      return;
+    }
+    const side = pickMap[fixtureId];
+    if (!side) { showNotice('error', 'Choose a team first.'); return; }
+    setLoading(true);
+    const res = await fetch(
+      `/api/matchups/${selectedMatchupId}/rounds/${currentRound.id}/picks`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ picks: [{ fixtureId, side }] })
+      }
+    );
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) {
+      showNotice('error', payload.error ?? 'Failed to save pick.');
+      setLoading(false);
+      return;
+    }
+    showNotice('ok', 'Pick saved!');
+    await loadCurrentRoundAndFixtures();
+    setLoading(false);
+  }
+
+  async function saveDisplayName() {
+    setSavingName(true);
+    const res = await fetch('/api/user/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName })
+    });
+    const payload = await res.json();
+    setSavingName(false);
+    if (!res.ok || !payload.ok) {
+      showNotice('error', payload.error ?? 'Failed to save display name.');
+      return;
+    }
+    showNotice('ok', 'Display name saved.');
+  }
+
+  async function saveDefaultPickSide(side: 'HOME' | 'AWAY') {
+    setSavingDefaultPick(true);
+    setDefaultPickSide(side);
+    const res = await fetch('/api/user/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultPickSide: side })
+    });
+    const payload = await res.json();
+    setSavingDefaultPick(false);
+    if (!res.ok || !payload.ok) {
+      showNotice('error', payload.error ?? 'Failed to save default pick.');
+    }
+  }
+
+  // ── Render: Fixture detail (content panel) ─────────────────────────────────
+
+  function renderFixtureDetail() {
+    const stage = currentRound?.stage ?? '';
+
+    if (!selectedMatchupId) {
+      return (
+        <div className="wc-content-empty">
+          <p className="wc-subtitle">Select a matchup from the left to load fixtures.</p>
+        </div>
+      );
+    }
+
+    if (!selectedFixture) {
+      return (
+        <div className="wc-content-empty">
+          <p className="wc-subtitle">Select a fixture from the feed to view its details.</p>
+        </div>
+      );
+    }
+
+    const f = selectedFixture;
+    const myPoints = computePickPoints(f, pickMap[f.id] ?? f.myPickSide, stage);
+    const firstPickerId = pickOrder[f.id];
+    const iPickFirst =
+      firstPickerId && myParticipantId ? firstPickerId === myParticipantId : null;
+
+    const myPick = pickMap[f.id] ?? f.myPickSide ?? null;
+    const pickState = !myPick ? null
+      : f.status === 'FINAL'
+        ? (myPoints !== null && myPoints > 0 ? 'correct' : 'wrong')
+        : 'pending';
+
+    return (
+      <div className="wc-stack">
+        {/* Large scorebug — matches feed card style */}
+        <div className="wc-fd-scorebug">
+          {/* Group / stage label */}
+          <div className="wc-fd-scorebug-group">
+            {f.groupName ? `Group ${f.groupName}` : currentRound ? fmtStage(currentRound.stage) : ''}
+          </div>
+
+          {/* Teams + score */}
+          <div className="wc-fd-scorebug-body">
+            {/* Home */}
+            <div className="wc-fd-scorebug-team">
+              <div className="wc-fd-scorebug-crest-wrap">
+                <span className="wc-fd-scorebug-crest">{teamFlag(f.homeTeam)}</span>
+                {myPick === 'HOME' && (
+                  <span className={`wc-pick-badge wc-pick-badge--avatar wc-pick-badge--home-side${pickState === 'wrong' ? ' wc-pick-badge--wrong' : pickState === 'correct' ? ' wc-pick-badge--correct' : ''}`}>
+                    {userAvatarUrl
+                      ? <img src={userAvatarUrl} alt="" className="wc-pick-badge-img" />
+                      : <span className="wc-pick-badge-init">{initials(displayName || userEmail)}</span>
+                    }
+                  </span>
+                )}
+                {f.opponentPickSide === 'HOME' && (
+                  <span className="wc-pick-badge wc-pick-badge--avatar wc-pick-badge--home-side">
+                    {oppAvatarUrl
+                      ? <img src={oppAvatarUrl} alt="" className="wc-pick-badge-img" />
+                      : <span className="wc-pick-badge-init">{initials(selectedMatchup?.opponentDisplayName || selectedMatchup?.opponentEmail || 'Opp')}</span>
+                    }
+                  </span>
+                )}
+              </div>
+              <div className="wc-fd-scorebug-name">{f.homeTeam}</div>
+            </div>
+
+            {/* Score center */}
+            <div className="wc-fd-scorebug-center">
+              <div className="wc-fd-scorebug-nums">
+                <span>{f.homeScore !== null ? f.homeScore : '—'}</span>
+                <span className="wc-fd-scorebug-sep">–</span>
+                <span>{f.awayScore !== null ? f.awayScore : '—'}</span>
+              </div>
+              <div className="wc-fd-scorebug-status">
+                <StatusGlyph status={f.status} isLocked={f.isLocked} size={13} />
+              </div>
+              <div className="wc-fd-scorebug-kickoff">
+                {new Date(f.startsAt).toLocaleString(undefined, {
+                  weekday: 'short', month: 'short', day: 'numeric',
+                  hour: 'numeric', minute: '2-digit'
+                })}
+              </div>
+              {(f.venue || f.city) && (
+                <div className="wc-fd-scorebug-venue">
+                  {[f.venue, f.city].filter(Boolean).join(' · ')}
+                </div>
+              )}
+            </div>
+
+            {/* Away */}
+            <div className="wc-fd-scorebug-team">
+              <div className="wc-fd-scorebug-crest-wrap">
+                <span className="wc-fd-scorebug-crest">{teamFlag(f.awayTeam)}</span>
+                {myPick === 'AWAY' && (
+                  <span className={`wc-pick-badge wc-pick-badge--avatar wc-pick-badge--away-side${pickState === 'wrong' ? ' wc-pick-badge--wrong' : pickState === 'correct' ? ' wc-pick-badge--correct' : ''}`}>
+                    {userAvatarUrl
+                      ? <img src={userAvatarUrl} alt="" className="wc-pick-badge-img" />
+                      : <span className="wc-pick-badge-init">{initials(displayName || userEmail)}</span>
+                    }
+                  </span>
+                )}
+                {f.opponentPickSide === 'AWAY' && (
+                  <span className="wc-pick-badge wc-pick-badge--avatar wc-pick-badge--away-side">
+                    {oppAvatarUrl
+                      ? <img src={oppAvatarUrl} alt="" className="wc-pick-badge-img" />
+                      : <span className="wc-pick-badge-init">{initials(selectedMatchup?.opponentDisplayName || selectedMatchup?.opponentEmail || 'Opp')}</span>
+                    }
+                  </span>
+                )}
+              </div>
+              <div className="wc-fd-scorebug-name">{f.awayTeam}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Pick section */}
+        {(() => {
+          const hasPickOrder = Object.keys(pickOrder).length > 0;
+          const iAmFirstPicker = !hasPickOrder || pickOrder[f.id] === myParticipantId;
+          const myEffectivePick = pickMap[f.id] ?? f.myPickSide;
+          const oppEffectivePick = f.opponentPickSide;
+
+          return (
+            <>
+              {/* Pick action area */}
+              <div className="wc-fd-section">
+                <div className="wc-fd-section-label">Who will win?</div>
+
+                {f.isLocked ? (
+                  /* Post-kickoff: show assigned picks as plain text */
+                  <div className="wc-fd-locked-picks">
+                    <div className="wc-fd-locked-pick">
+                      <span className="wc-fd-locked-pick-you">You</span>
+                      <span className="wc-fd-locked-pick-team">
+                        {myEffectivePick ? (myEffectivePick === 'HOME' ? f.homeTeam : f.awayTeam) : '—'}
+                      </span>
+                    </div>
+                    <div className="wc-fd-locked-pick">
+                      <span className="wc-fd-locked-pick-you">Opponent</span>
+                      <span className="wc-fd-locked-pick-team">
+                        {oppEffectivePick ? (oppEffectivePick === 'HOME' ? f.homeTeam : f.awayTeam) : '—'}
+                      </span>
+                    </div>
+                  </div>
+                ) : iAmFirstPicker ? (
+                  /* First picker: dropdown + save */
+                  <>
+                    <p className="wc-pick-hint" style={{ margin: '0 0 6px' }}>You pick first — opponent is assigned the other team.</p>
+                    <select
+                      className="wc-select"
+                      value={pickMap[f.id] ?? ''}
+                      disabled={loading}
+                      onChange={(e) => {
+                        const side = e.target.value as 'HOME' | 'AWAY' | '';
+                        setPickMap((prev) => {
+                          if (!side) { const next = { ...prev }; delete next[f.id]; return next; }
+                          return { ...prev, [f.id]: side };
+                        });
+                      }}
+                    >
+                      <option value="" disabled hidden />
+                      <option value="HOME">{f.homeTeam}</option>
+                      <option value="AWAY">{f.awayTeam}</option>
+                    </select>
+                    <button
+                      className="wc-btn wc-btn-primary"
+                      type="button"
+                      onClick={() => submitSinglePick(f.id)}
+                      disabled={loading || !pickMap[f.id]}
+                    >
+                      Save Pick
+                    </button>
+                  </>
+                ) : myEffectivePick ? (
+                  /* Second picker — opponent has picked, you're auto-assigned */
+                  <div className="wc-fd-assigned">
+                    <span className="wc-fd-assigned-flag">{teamFlag(myEffectivePick === 'HOME' ? f.homeTeam : f.awayTeam)}</span>
+                    <div>
+                      <div className="wc-fd-assigned-label">You&apos;ve been assigned</div>
+                      <div className="wc-fd-assigned-team">{myEffectivePick === 'HOME' ? f.homeTeam : f.awayTeam}</div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Second picker — waiting for opponent to pick */
+                  <p className="wc-pick-hint wc-pick-hint--opponent" style={{ margin: '0 0 6px' }}>
+                    Waiting for opponent to pick — you&apos;ll be assigned the other team.
+                  </p>
+                )}
+              </div>
+
+              {/* Points outcome */}
+              {f.status === 'FINAL' && myPoints !== null && (
+                <div className={`wc-fd-outcome${myPoints > 0 ? ' wc-fd-outcome--scored' : ' wc-fd-outcome--missed'}`}>
+                  {myPoints > 0 ? `+${myPoints} pts` : 'Missed — 0 pts'}
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+        {/* Previous World Cup Meetings */}
+        {headToHead.length > 0 && (
+          <div className="wc-fd-section">
+            <div className="wc-fd-section-label">Previous World Cup Meetings</div>
+            <div className="wc-h2h-history">
+              {headToHead.map((m, i) => {
+                const isH2hHomeFixtureHome = m.home === h2hHome;
+                const fixtureHomeGoals = isH2hHomeFixtureHome ? m.homeGoals : m.awayGoals;
+                const fixtureAwayGoals = isH2hHomeFixtureHome ? m.awayGoals : m.homeGoals;
+                const homeWon = (fixtureHomeGoals ?? 0) > (fixtureAwayGoals ?? 0);
+                const awayWon = (fixtureAwayGoals ?? 0) > (fixtureHomeGoals ?? 0);
+                return (
+                  <div key={i} className="wc-h2h-row">
+                    <span className={`wc-h2h-row-team${homeWon ? ' wc-h2h-row-team--winner' : ''}`}>{h2hHome}</span>
+                    <span className={`wc-h2h-row-score wc-h2h-row-score--${homeWon ? 'home' : awayWon ? 'away' : 'draw'}`}>
+                      {fixtureHomeGoals ?? '?'} – {fixtureAwayGoals ?? '?'}
+                    </span>
+                    <span className={`wc-h2h-row-team wc-h2h-row-team--right${awayWon ? ' wc-h2h-row-team--winner' : ''}`}>{h2hAway}</span>
+                    <span className="wc-h2h-row-meta">{m.year} · {m.stage}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Render: Standings ──────────────────────────────────────────────────────
+
+  function renderStandings() {
+    const myEntry = standing.find((s) => s.email === userEmail);
+    const opponentEntry = standing.find((s) => s.email !== userEmail);
+    const statusLabel = (() => {
+      if (!myEntry || !opponentEntry) return null;
+      if (myEntry.tournamentPoints > opponentEntry.tournamentPoints) return 'Leading';
+      if (myEntry.tournamentPoints < opponentEntry.tournamentPoints) return 'Behind';
+      return 'Tied';
+    })();
+
+    return (
+      <div className="wc-stack">
+        {standing.length > 0 ? (
+          <>
+            <div className="wc-standings-card">
+              <div className="wc-standings-col">
+                <div className="wc-standings-name">
+                  {myEntry?.displayName ?? myEntry?.email ?? 'You'}
+                </div>
+                <div className="wc-standings-pts">{myEntry?.tournamentPoints ?? 0}</div>
+                <div className="wc-standings-label">pts</div>
+              </div>
+              {statusLabel && <div className="wc-standings-status">{statusLabel}</div>}
+              <div className="wc-standings-col wc-standings-col--right">
+                <div className="wc-standings-name">
+                  {opponentEntry?.displayName ?? opponentEntry?.email ?? 'Opponent'}
+                </div>
+                <div className="wc-standings-pts">{opponentEntry?.tournamentPoints ?? 0}</div>
+                <div className="wc-standings-label">pts</div>
+              </div>
+            </div>
+
+            {roundResults.length > 0 && (
+              <table className="wc-round-table">
+                <thead>
+                  <tr>
+                    <th>Round</th>
+                    <th>You</th>
+                    <th>Opponent</th>
+                    <th>Δ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roundResults.map((rr) => {
+                    const me = rr.participants.find((p) => p.email === userEmail);
+                    const opp = rr.participants.find((p) => p.email !== userEmail);
+                    const delta = (me?.points ?? 0) - (opp?.points ?? 0);
+                    return (
+                      <tr key={rr.roundId}>
+                        <td>{fmtStage(rr.stage)}</td>
+                        <td>{me?.points ?? 0}</td>
+                        <td>{opp?.points ?? 0}</td>
+                        <td
+                          style={{
+                            color:
+                              delta > 0
+                                ? 'var(--ok)'
+                                : delta < 0
+                                  ? 'var(--danger)'
+                                  : undefined
+                          }}
+                        >
+                          {delta > 0 ? `+${delta}` : delta}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </>
+        ) : (
+          <p className="wc-subtitle">
+            {selectedMatchupId
+              ? 'No results yet — standings appear after the first round settles.'
+              : 'Select a matchup to see standings.'}
+          </p>
+        )}
+
+        <div className="wc-pill-row" style={{ marginTop: 4 }}>
+          <span className="wc-round-label">Fixtures: {fixtures.length}</span>
+          <span className="wc-round-label">Picked: {pickedCount}</span>
+          <span className="wc-round-label">Locked: {lockedCount}</span>
+          <span className="wc-round-label">
+            Open: {Math.max(fixtures.length - lockedCount, 0)}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render: Squad tab ─────────────────────────────────────────────────────
+
+  function renderSquad() {
+    if (!selectedFixture) {
+      return (
+        <div className="wc-content-empty">
+          <p className="wc-subtitle">Select a fixture to view squad info.</p>
+        </div>
+      );
+    }
+    return (
+      <div className="wc-content-empty">
+        <p style={{ fontSize: '1.8rem' }}>🏃</p>
+        <p style={{ fontWeight: 700, margin: 0 }}>
+          {selectedFixture.homeTeam} vs {selectedFixture.awayTeam}
+        </p>
+        <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
+          Squad lineups will appear here once confirmed — typically 1 hour before kickoff.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Render: Game Recap tab ─────────────────────────────────────────────────
+
+  function renderRecap() {
+    if (!selectedFixture) {
+      return (
+        <div className="wc-content-empty">
+          <p className="wc-subtitle">Select a fixture to view the recap.</p>
+        </div>
+      );
+    }
+    if (selectedFixture.status !== 'FINAL') {
+      return (
+        <div className="wc-content-empty">
+          <p style={{ fontSize: '1.8rem' }}>⏱</p>
+          <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
+            Game recap will be available after the match ends.
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="wc-content-empty">
+        <p style={{ fontSize: '1.8rem' }}>📰</p>
+        <p style={{ fontWeight: 700, margin: 0 }}>
+          {selectedFixture.homeTeam} {selectedFixture.homeScore} – {selectedFixture.awayScore} {selectedFixture.awayTeam}
+        </p>
+        <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
+          Full match recap — coming soon.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Render: Score chart (H2H scorebug modal) ───────────────────────────────
+
+  function renderScoreChart() {
+    const me = standing.find((s) => s.participantId === myParticipantId);
+    const opp = standing.find((s) => s.participantId !== myParticipantId);
+    const myName = 'You';
+    const oppName =
+      selectedMatchup?.opponentDisplayName ??
+      selectedMatchup?.opponentEmail?.split('@')[0] ??
+      'Opponent';
+
+    // Use allRounds for full X axis; fill from roundResults
+    const rounds = allRounds.length
+      ? allRounds
+      : roundResults.map((r) => ({
+          id: r.roundId,
+          stage: r.stage,
+          orderIndex: r.orderIndex,
+          is_complete: true,
+          starts_at: null,
+          ends_at: null,
+          tournament_id: ''
+        }));
+
+    if (!rounds.length) {
+      return (
+        <div style={{ textAlign: 'center', padding: '24px 0' }}>
+          <p className="wc-subtitle">No matchday data yet. Scores will appear once rounds are scored.</p>
+        </div>
+      );
+    }
+
+    // Build per-round and cumulative points
+    // allRounds uses order_index (snake_case from DB); fallback objects use orderIndex
+    const sorted = [...rounds].sort((a, b) =>
+      ('order_index' in a ? a.order_index : (a as {orderIndex:number}).orderIndex) -
+      ('order_index' in b ? b.order_index : (b as {orderIndex:number}).orderIndex)
+    );
+    const resultMap = new Map(roundResults.map((r) => [r.roundId, r]));
+
+    let myCum = 0;
+    let oppCum = 0;
+    const data = sorted.map((round) => {
+      const result = resultMap.get(round.id);
+      const myEntry = result?.participants.find((p) => p.participantId === myParticipantId);
+      const oppEntry = result?.participants.find((p) => p.participantId !== myParticipantId);
+      const myRound = myEntry?.points ?? 0;
+      const oppRound = oppEntry?.points ?? 0;
+      myCum += myRound;
+      oppCum += oppRound;
+      return {
+        label: fmtStage(round.stage).split(' ').map((w: string) => w[0]).join(''),
+        myRound,
+        oppRound,
+        myCum,
+        oppCum,
+        played: Boolean(result)
+      };
+    });
+
+    // SVG bar chart — cumulative totals per round
+    const W = 520, H = 180, PL = 32, PR = 12, PT = 12, PB = 28;
+    const cW = W - PL - PR;
+    const cH = H - PT - PB;
+    const maxVal = Math.max(...data.map((d) => Math.max(d.myCum, d.oppCum)), 1) * 1.08;
+    const n = data.length;
+    const barGroupW = cW / n;
+    const barW = Math.min(barGroupW * 0.28, 20);
+    const toY = (v: number) => PT + cH - (v / maxVal) * cH;
+    const toX = (i: number) => PL + i * barGroupW + barGroupW / 2;
+
+    // Y axis ticks
+    const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(maxVal * f));
+
+    const myColor = 'var(--accent)';
+    const oppColor = 'var(--text-2)';
+
+    return (
+      <>
+        <div className="wc-chart-wrap">
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            width="100%"
+            style={{ display: 'block' }}
+            aria-label="Score by matchday"
+          >
+            {/* Y grid + labels */}
+            {yTicks.map((v) => {
+              const y = toY(v);
+              return (
+                <g key={`tick-${v}`}>
+                  <line
+                    x1={PL} y1={y} x2={W - PR} y2={y}
+                    stroke="var(--line)" strokeWidth={1}
+                  />
+                  <text
+                    x={PL - 4} y={y + 4}
+                    textAnchor="end"
+                    fontSize={9}
+                    fill="var(--text-2)"
+                  >
+                    {v}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Bars + X labels */}
+            {data.map((d, i) => {
+              const cx = toX(i);
+              return (
+                <g key={`bar-${i}`}>
+                  {/* My bar */}
+                  <rect
+                    x={cx - barW - 1}
+                    y={toY(d.myCum)}
+                    width={barW}
+                    height={Math.max(cH - (toY(d.myCum) - PT), 0)}
+                    fill={d.played ? myColor : 'var(--line)'}
+                    opacity={d.played ? 0.85 : 0.4}
+                    rx={2}
+                  />
+                  {/* Opponent bar */}
+                  <rect
+                    x={cx + 1}
+                    y={toY(d.oppCum)}
+                    width={barW}
+                    height={Math.max(cH - (toY(d.oppCum) - PT), 0)}
+                    fill={d.played ? oppColor : 'var(--line)'}
+                    opacity={d.played ? 0.6 : 0.3}
+                    rx={2}
+                  />
+                  {/* X label */}
+                  <text
+                    x={cx}
+                    y={H - 6}
+                    textAnchor="middle"
+                    fontSize={9}
+                    fill="var(--text-2)"
+                  >
+                    {d.label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+
+        <div className="wc-chart-legend">
+          <span className="wc-chart-legend-item">
+            <span
+              className="wc-chart-legend-dot"
+              style={{ background: 'var(--accent)' }}
+            />
+            {myName}: {me?.tournamentPoints ?? 0} pts
+          </span>
+          <span className="wc-chart-legend-item">
+            <span
+              className="wc-chart-legend-dot"
+              style={{ background: 'var(--text-2)' }}
+            />
+            {oppName}: {opp?.tournamentPoints ?? 0} pts
+          </span>
+        </div>
+
+        {/* Per-round table */}
+        {roundResults.length > 0 && (
+          <table className="wc-round-table" style={{ marginTop: 4 }}>
+            <thead>
+              <tr>
+                <th>Round</th>
+                <th style={{ textAlign: 'right' }}>{myName}</th>
+                <th style={{ textAlign: 'right' }}>{oppName}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {roundResults
+                .slice()
+                .sort((a, b) => a.orderIndex - b.orderIndex)
+                .map((r) => {
+                  const myEntry = r.participants.find((p) => p.participantId === myParticipantId);
+                  const oppEntry = r.participants.find((p) => p.participantId !== myParticipantId);
+                  return (
+                    <tr key={r.roundId}>
+                      <td>{fmtStage(r.stage)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                        {myEntry?.points ?? 0}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {oppEntry?.points ?? 0}
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        )}
+      </>
+    );
+  }
+
+  // ── Render: Profile (used in modal) ────────────────────────────────────────
+
+  function renderProfile() {
+    return (
+      <div className="wc-stack">
+        <p className="wc-subtitle">
+          Signed in as <strong>{userEmail}</strong>
+        </p>
+        <label>
+          Display name
+          <div className="wc-inline-form" style={{ marginTop: 4 }}>
+            <input
+              className="wc-input"
+              value={displayName}
+              maxLength={64}
+              placeholder="How opponents see you"
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
+            <button
+              className="wc-btn wc-btn-primary"
+              type="button"
+              disabled={savingName || !displayName.trim()}
+              onClick={saveDisplayName}
+            >
+              Save
+            </button>
+          </div>
+        </label>
+        <div className="wc-profile-setting">
+          <div className="wc-profile-setting-label">Default pick if I miss kickoff</div>
+          <div className="wc-profile-setting-hint">If you don&apos;t pick before a match starts, this team side is used automatically.</div>
+          <div className="wc-toggle-group">
+            <button
+              className={`wc-toggle-btn${defaultPickSide === 'HOME' ? ' wc-toggle-btn--active' : ''}`}
+              type="button"
+              disabled={savingDefaultPick}
+              onClick={() => saveDefaultPickSide('HOME')}
+            >
+              Home
+            </button>
+            <button
+              className={`wc-toggle-btn${defaultPickSide === 'AWAY' ? ' wc-toggle-btn--active' : ''}`}
+              type="button"
+              disabled={savingDefaultPick}
+              onClick={() => saveDefaultPickSide('AWAY')}
+            >
+              Away
+            </button>
+          </div>
+        </div>
+
+        <ul className="wc-profile-list">
+          <li>Theme follows your system preference (light / dark).</li>
+          <li>Reduced motion is respected automatically.</li>
+        </ul>
+        <div className="wc-pill-row">
+          <button className="wc-btn" type="button" onClick={signOut}>
+            Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Shell ──────────────────────────────────────────────────────────────────
+
+  const tournamentLabel = activeTournament?.label ?? "FIFA World Cup '26";
+
+  return (
+    <div className="wc-shell">
+      {/* ── Top bar ─────────────────────────────────────────────────────────── */}
+      <header className="wc-topbar">
+        {/* Tournament name — clickable, opens dropdown */}
+        <div className="wc-tournament-menu" ref={tournamentMenuRef}>
+          <button
+            className="wc-topbar-brand wc-topbar-brand--btn"
+            onClick={() => setTournamentMenuOpen((v) => !v)}
+            aria-expanded={tournamentMenuOpen}
+            aria-label="Switch tournament"
+          >
+            <span className="wc-topbar-brand-name">
+              {tournamentLabel.split("'")[0].trim()}
+            </span>
+            <span className="wc-topbar-brand-year">
+              &apos;{tournamentLabel.split("'")[1] ?? '26'}
+            </span>
+            <span className="wc-topbar-brand-chevron">▾</span>
+          </button>
+
+          {tournamentMenuOpen && (
+            <div className="wc-dropdown wc-dropdown--left" role="menu">
+              <div className="wc-dropdown-header">
+                <span className="wc-dropdown-email">Your Tournaments</span>
+              </div>
+              <div className="wc-dropdown-divider" />
+              {tournaments.length > 0 ? (
+                tournaments.map((t) => (
+                  <button
+                    key={t.id}
+                    className="wc-dropdown-item"
+                    role="menuitem"
+                    aria-pressed={t.id === activeTournament?.id}
+                    onClick={() => setTournamentMenuOpen(false)}
+                  >
+                    <span className="wc-dropdown-item-icon">
+                      {t.id === activeTournament?.id ? '●' : '○'}
+                    </span>
+                    {t.label}
+                  </button>
+                ))
+              ) : (
+                <div style={{ padding: '10px 14px' }}>
+                  <span className="wc-subtitle" style={{ fontSize: '0.82rem' }}>
+                    No tournaments yet
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Centre: H2H scorebug ────────────────────────────────────────── */}
+        <div className="wc-topbar-center">
+          {selectedMatchup && (() => {
+            const me = standing.find((s) => s.participantId === myParticipantId);
+            const opp = standing.find((s) => s.participantId !== myParticipantId);
+            const myPts = me?.tournamentPoints ?? 0;
+            const oppPts = opp?.tournamentPoints ?? 0;
+            const leading = myPts > oppPts;
+            const trailing = myPts < oppPts;
+            const myName = displayName || userEmail.split('@')[0];
+            const myInit = initials(myName);
+            const oppName =
+              selectedMatchup.opponentDisplayName ??
+              selectedMatchup.opponentEmail?.split('@')[0] ??
+              'Opp';
+            const oppInit = initials(oppName);
+            return (
+              <button
+                className="wc-h2h"
+                title="View score breakdown"
+                onClick={() => setScoreChartOpen(true)}
+              >
+                {/* Home — current user: name LEFT, avatar RIGHT */}
+                <div className="wc-h2h-player">
+                  <span className="wc-h2h-name">{myName}</span>
+                  {userAvatarUrl ? (
+                    <img className="wc-h2h-avatar" src={userAvatarUrl} alt={myName} />
+                  ) : (
+                    <span className="wc-h2h-avatar wc-h2h-avatar--me">{myInit}</span>
+                  )}
+                </div>
+
+                {/* Score */}
+                <div className="wc-h2h-score">
+                  <span className={myPts > oppPts ? 'wc-h2h-pts--leading' : myPts < oppPts ? 'wc-h2h-pts--trailing' : ''}>
+                    {myPts}
+                  </span>
+                  <span className="wc-h2h-sep">–</span>
+                  <span className={oppPts > myPts ? 'wc-h2h-pts--leading' : oppPts < myPts ? 'wc-h2h-pts--trailing' : ''}>
+                    {oppPts}
+                  </span>
+                </div>
+
+                {/* Away — opponent */}
+                <div className="wc-h2h-player wc-h2h-player--right">
+                  <span className="wc-h2h-name">{oppName}</span>
+                  {selectedMatchup?.opponentAvatarUrl ? (
+                    <img className="wc-h2h-avatar" src={selectedMatchup.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
+                  ) : (
+                    <span className="wc-h2h-avatar wc-h2h-avatar--opp">{oppInit}</span>
+                  )}
+                </div>
+              </button>
+            );
+          })()}
+        </div>
+
+        {/* Global actions + user */}
+        <div className="wc-topbar-right">
+          <button
+            className="wc-btn wc-btn-sm wc-btn-primary"
+            type="button"
+            onClick={createMatchup}
+            disabled={loading}
+          >
+            + Create
+          </button>
+          <button
+            className="wc-btn wc-btn-sm"
+            type="button"
+            onClick={() => setJoinOpen(true)}
+            disabled={loading}
+          >
+            Join
+          </button>
+
+          <div className="wc-topbar-sep" />
+
+          {/* User avatar + dropdown */}
+          <div className="wc-user-menu" ref={userMenuRef}>
+            <button
+              className="wc-user-btn"
+              aria-label="User menu"
+              aria-expanded={userMenuOpen}
+              onClick={() => setUserMenuOpen((v) => !v)}
+            >
+              {userAvatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={userAvatarUrl}
+                  alt="Profile"
+                  className="wc-user-avatar"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="wc-user-avatar wc-user-avatar--initials">
+                  {(displayName || userEmail).charAt(0).toUpperCase()}
+                </span>
+              )}
+            </button>
+
+            {userMenuOpen && (
+              <div className="wc-dropdown" role="menu">
+                <div className="wc-dropdown-header">
+                  <span className="wc-dropdown-email">{userEmail}</span>
+                </div>
+                <div className="wc-dropdown-divider" />
+                <button
+                  className="wc-dropdown-item"
+                  role="menuitem"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setProfileModalOpen(true);
+                  }}
+                >
+                  <span className="wc-dropdown-item-icon">⚙</span>
+                  Settings
+                </button>
+                <a
+                  className="wc-dropdown-item"
+                  role="menuitem"
+                  href="/admin"
+                  onClick={() => setUserMenuOpen(false)}
+                >
+                  <span className="wc-dropdown-item-icon">🛠</span>
+                  Admin Tools
+                </a>
+                {selectedMatchupId && (
+                  <>
+                    <div className="wc-dropdown-divider" />
+                    <a
+                      className="wc-dropdown-item"
+                      role="menuitem"
+                      href={`/api/calendar/matchup/${selectedMatchupId}/all`}
+                      download="world-cup-pickem-2026.ics"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      <span className="wc-dropdown-item-icon">📅</span>
+                      Download All Fixtures
+                    </a>
+                  </>
+                )}
+                <div className="wc-dropdown-divider" />
+                <button
+                  className="wc-dropdown-item"
+                  role="menuitem"
+                  onClick={() => { setUserMenuOpen(false); signOut(); }}
+                >
+                  <span className="wc-dropdown-item-icon">→</span>
+                  Sign Out
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* ── Body ────────────────────────────────────────────────────────────── */}
+      <div className={`wc-body wc-body--${mobileView}`}>
+
+        {/* ── Left nav: Matchups ───────────────────────────────────────────── */}
+        <nav
+          className={`wc-leftnav${leftNavOpen ? '' : ' wc-leftnav--collapsed'}`}
+          aria-label="Matchups"
+        >
+          <div className="wc-nav-scroll">
+            {matchups.length === 0 && leftNavOpen && (
+              <p className="wc-subtitle" style={{ padding: '8px 10px', fontSize: '0.82rem' }}>
+                No matchups yet.
+              </p>
+            )}
+            {matchups.map((m) => {
+              const oppName =
+                m.opponentDisplayName ?? m.opponentEmail?.split('@')[0] ?? null;
+              const oppInit = initials(oppName, '?');
+              const isActive = m.matchupId === selectedMatchupId;
+
+              return (
+                <button
+                  key={m.matchupId}
+                  className="wc-nav-item"
+                  aria-current={isActive ? 'true' : undefined}
+                  title={oppName ? `vs ${oppName}` : 'Pending opponent'}
+                  onClick={() => setSelectedMatchupId(m.matchupId)}
+                >
+                  {leftNavOpen ? (
+                    <span className="wc-nav-item-name">
+                      vs {oppName ?? <em style={{ color: 'var(--text-1)' }}>Pending</em>}
+                    </span>
+                  ) : (
+                    /* Collapsed: opponent initial avatar */
+                    <span className="wc-nav-opp-avatar" aria-hidden="true">
+                      {oppName ? oppInit : '?'}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Collapse toggle — pinned to bottom */}
+          <div className="wc-nav-footer">
+            <button
+              className="wc-nav-collapse-btn"
+              aria-label={leftNavOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              title={leftNavOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              onClick={() => setLeftNavOpen((v) => !v)}
+            >
+              {leftNavOpen ? '‹' : '›'}
+            </button>
+          </div>
+        </nav>
+
+        {/* ── Center feed: Fixtures ────────────────────────────────────────── */}
+        <div className="wc-feed">
+          <div className="wc-feed-header">
+            <span className="wc-feed-title">Fixtures</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {hasLiveFixtures && <span className="wc-live-badge">🔴</span>}
+              <span className="wc-feed-count">{visibleFixtures.length}</span>
+
+              {/* Filter button + flyout */}
+              {fixtures.length > 0 && (
+                <div className="wc-filter-wrap" ref={filterRef}>
+                  <button
+                    className={`wc-filter-btn${(filterGroup || filterNoPick || filterPickable) ? ' wc-filter-btn--active' : ''}`}
+                    onClick={() => setFilterOpen((v) => !v)}
+                    aria-expanded={filterOpen}
+                    aria-label="Filter fixtures"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                    Filter
+                    {(filterGroup || filterNoPick || filterPickable) && (
+                      <span className="wc-filter-badge">
+                        {(filterGroup ? 1 : 0) + (filterNoPick ? 1 : 0) + (filterPickable ? 1 : 0)}
+                      </span>
+                    )}
+                  </button>
+
+                  {filterOpen && (
+                    <div className="wc-filter-flyout">
+                      <div className="wc-filter-section-label">Group</div>
+                      <div className="wc-filter-options">
+                        <button
+                          className={`wc-filter-option${filterGroup === null ? ' wc-filter-option--selected' : ''}`}
+                          onClick={() => setFilterGroup(null)}
+                        >All groups</button>
+                        {availableGroups.map((g) => (
+                          <button
+                            key={g}
+                            className={`wc-filter-option${filterGroup === g ? ' wc-filter-option--selected' : ''}`}
+                            onClick={() => { setFilterGroup(g); setFilterOpen(false); }}
+                          >Group {g}</button>
+                        ))}
+                      </div>
+
+                      <div className="wc-filter-divider" />
+
+                      <button
+                        className={`wc-filter-option${filterNoPick ? ' wc-filter-option--selected' : ''}`}
+                        onClick={() => { setFilterNoPick((v) => !v); }}
+                      >
+                        {filterNoPick ? '✓ ' : ''}No pick yet
+                      </button>
+
+                      <button
+                        className={`wc-filter-option${filterPickable ? ' wc-filter-option--selected' : ''}`}
+                        onClick={() => { setFilterPickable((v) => !v); }}
+                      >
+                        {filterPickable ? '✓ ' : ''}Pickable only
+                      </button>
+
+                      {(filterGroup || filterNoPick || filterPickable) && (
+                        <>
+                          <div className="wc-filter-divider" />
+                          <button
+                            className="wc-filter-option wc-filter-option--clear"
+                            onClick={() => { setFilterGroup(null); setFilterNoPick(false); setFilterPickable(false); setFilterOpen(false); }}
+                          >Clear filters</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="wc-feed-scroll">
+            {allRounds.length === 0 && !loading ? (
+              <div className="wc-feed-empty">
+                <p className="wc-subtitle">No fixtures for the current round.</p>
+              </div>
+            ) : (
+              allRounds.map((round) => {
+                const isCurrentRound = round.id === currentRound?.id;
+                const roundFixtures = isCurrentRound ? visibleFixtures : [];
+                const hasFilters = !!(filterGroup || filterNoPick || filterPickable);
+                // For non-current rounds, only hide if a group filter is active (groups only exist in GROUP stage)
+                if (hasFilters && filterGroup && round.stage !== 'GROUP') return null;
+
+                return (
+                  <div key={round.id} className="wc-round-section">
+                    {/* Sticky round header */}
+                    <div className="wc-round-section-header">
+                      <span className="wc-round-section-title">{fmtStage(round.stage)}</span>
+                      {round.starts_at && (
+                        <span className="wc-round-section-date">
+                          {new Date(round.starts_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
+                          {round.ends_at && round.ends_at !== round.starts_at
+                            ? ` – ${new Date(round.ends_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`
+                            : ''}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Fixtures or TBD placeholder */}
+                    {isCurrentRound ? (
+                      roundFixtures.length === 0 ? (
+                        <div className="wc-round-tbd">
+                          {hasFilters ? 'No fixtures match the filter.' : 'No fixtures yet.'}
+                        </div>
+                      ) : (() => {
+                        const matchdays = computeMatchdays(roundFixtures);
+                        let lastMatchday = 0;
+                        return roundFixtures.map((f) => {
+                          const isSelected = f.id === selectedFixtureId;
+                          const myPick = pickMap[f.id] ?? f.myPickSide ?? null;
+                          const pts = computePickPoints(f, myPick, round.stage);
+                          // Fixture is "mine" when pick order hasn't loaded yet (allow all),
+                          // or when this fixture is explicitly assigned to me.
+                          const hasPickOrder = Object.keys(pickOrder).length > 0;
+                          const isMyFixture = !hasPickOrder || pickOrder[f.id] === myParticipantId;
+                          const thisMatchday = matchdays.get(f.id) ?? 1;
+                          const showMatchdayHeader = thisMatchday !== lastMatchday;
+                          if (showMatchdayHeader) lastMatchday = thisMatchday;
+
+                          // Format kickoff time: "Jun 11 · 3:00 PM"
+                          const kickoffDate = new Date(f.startsAt);
+                          const kickoffLabel = kickoffDate.toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            timeZone: 'UTC'
+                          });
+
+                          return (
+                            <div key={f.id}>
+                              {showMatchdayHeader && (
+                                <div className="wc-matchday-header">Matchday {thisMatchday}</div>
+                              )}
+                              <button
+                                className={`wc-scorebug${isSelected ? ' wc-scorebug--selected' : ''}${f.isLocked ? ' wc-scorebug--locked' : ''}${!f.isLocked && !isMyFixture ? ' wc-scorebug--not-mine' : ''}`}
+                                aria-current={isSelected ? 'true' : undefined}
+                                onClick={() => {
+                                  setSelectedFixtureId(f.id);
+                                  setContentTab('details');
+                                  setMobileView('content');
+                                  setHeadToHead([]);
+                                  fetch(`/api/fixtures/${f.id}/head-to-head`)
+                                    .then((r) => r.json())
+                                    .then((d) => { setHeadToHead(d.meetings ?? []); setH2hHome(d.home ?? ''); setH2hAway(d.away ?? ''); })
+                                    .catch(() => {});
+                                }}
+                              >
+                              {/* Group label + kickoff */}
+                              {f.groupName && (
+                                <div className="wc-scorebug-group">
+                                  <span>Group {f.groupName}</span>
+                                  <span className="wc-scorebug-kickoff">{kickoffLabel}</span>
+                                </div>
+                              )}
+
+                              {/* Teams + score row */}
+                              {(() => {
+                                const pickState = !myPick ? null
+                                  : f.status === 'FINAL'
+                                    ? (pts !== null && pts > 0 ? 'correct' : 'wrong')
+                                    : 'pending';
+                                return (
+                                  <div className="wc-scorebug-body">
+                                    <div className="wc-scorebug-team">
+                                      <div className="wc-scorebug-crest-wrap">
+                                        <span className="wc-scorebug-crest">{teamFlag(f.homeTeam)}</span>
+                                        {myPick === 'HOME' && (
+                                          <span className={`wc-pick-badge wc-pick-badge--avatar wc-pick-badge--home-side${pickState === 'wrong' ? ' wc-pick-badge--wrong' : pickState === 'correct' ? ' wc-pick-badge--correct' : ''}`}>
+                                            {userAvatarUrl
+                                              ? <img src={userAvatarUrl} alt="" className="wc-pick-badge-img" />
+                                              : <span className="wc-pick-badge-init">{initials(displayName || userEmail)}</span>
+                                            }
+                                          </span>
+                                        )}
+                                        {f.opponentPickSide === 'HOME' && (
+                                          <span className="wc-pick-badge wc-pick-badge--avatar wc-pick-badge--home-side">
+                                            {oppAvatarUrl
+                                              ? <img src={oppAvatarUrl} alt="" className="wc-pick-badge-img" />
+                                              : <span className="wc-pick-badge-init">{initials(selectedMatchup?.opponentDisplayName || selectedMatchup?.opponentEmail || 'Opp')}</span>
+                                            }
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="wc-scorebug-code">{teamCode(f.homeTeam)}</div>
+                                    </div>
+                                    <div className="wc-scorebug-center">
+                                      <div className="wc-scorebug-nums">
+                                        <span>{f.homeScore !== null ? f.homeScore : '—'}</span>
+                                        <span className="wc-scorebug-sep">–</span>
+                                        <span>{f.awayScore !== null ? f.awayScore : '—'}</span>
+                                      </div>
+                                      <div className="wc-scorebug-status-row">
+                                        <StatusGlyph status={f.status} isLocked={f.isLocked} />
+                                      </div>
+                                    </div>
+                                    <div className="wc-scorebug-team">
+                                      <div className="wc-scorebug-crest-wrap">
+                                        <span className="wc-scorebug-crest">{teamFlag(f.awayTeam)}</span>
+                                        {myPick === 'AWAY' && (
+                                          <span className={`wc-pick-badge wc-pick-badge--avatar wc-pick-badge--away-side${pickState === 'wrong' ? ' wc-pick-badge--wrong' : pickState === 'correct' ? ' wc-pick-badge--correct' : ''}`}>
+                                            {userAvatarUrl
+                                              ? <img src={userAvatarUrl} alt="" className="wc-pick-badge-img" />
+                                              : <span className="wc-pick-badge-init">{initials(displayName || userEmail)}</span>
+                                            }
+                                          </span>
+                                        )}
+                                        {f.opponentPickSide === 'AWAY' && (
+                                          <span className="wc-pick-badge wc-pick-badge--avatar wc-pick-badge--away-side">
+                                            {oppAvatarUrl
+                                              ? <img src={oppAvatarUrl} alt="" className="wc-pick-badge-img" />
+                                              : <span className="wc-pick-badge-init">{initials(selectedMatchup?.opponentDisplayName || selectedMatchup?.opponentEmail || 'Opp')}</span>
+                                            }
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="wc-scorebug-code">{teamCode(f.awayTeam)}</div>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                              </button>
+                            </div>
+                          );
+                        });
+                      })()
+                    ) : (
+                      <div className="wc-round-tbd">Fixtures TBD</div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* ── Content panel: Fixture Details ──────────────────────────────── */}
+        <div className="wc-content">
+          {/* Header: single row — mobile back pinned left, tabs centred */}
+          <div className="wc-content-header">
+            <button
+              className="wc-topbar-icon-btn wc-mobile-back"
+              aria-label="Back to feed"
+              onClick={() => setMobileView('feed')}
+            >
+              ‹
+            </button>
+            <div className="wc-content-tabs">
+              <button
+                className="wc-content-tab"
+                aria-pressed={contentTab === 'details'}
+                onClick={() => setContentTab('details')}
+              >
+                {hasLiveFixtures ? '🔴 ' : ''}Match Details
+              </button>
+              <button
+                className="wc-content-tab"
+                aria-pressed={contentTab === 'squad'}
+                onClick={() => setContentTab('squad')}
+              >
+                Squad
+              </button>
+              <button
+                className="wc-content-tab"
+                aria-pressed={contentTab === 'recap'}
+                onClick={() => setContentTab('recap')}
+              >
+                Game Recap
+              </button>
+            </div>
+          </div>
+
+          {/* Notice */}
+          {notice && (
+            <div className={`wc-notice wc-notice--${notice.tone}`}>{notice.text}</div>
+          )}
+
+          {/* Body */}
+          <div className="wc-content-body">
+            {contentTab === 'details' && renderFixtureDetail()}
+            {contentTab === 'squad' && renderSquad()}
+            {contentTab === 'recap' && renderRecap()}
+          </div>
+        </div>
+
+        {/* ── Right drawer ─────────────────────────────────────────────────── */}
+        <aside
+          className={`wc-drawer${drawerOpen ? ' wc-drawer--open' : ''}`}
+          aria-label="Side panel"
+        >
+          {/* Icon strip — always visible */}
+          <div className="wc-drawer-icons">
+            {(
+              [
+                { id: 'chat',     icon: '💬', label: 'Chat' },
+                { id: 'calendar', icon: '📅', label: 'Calendar' },
+                { id: 'tv',       icon: '📺', label: 'TV' },
+                { id: 'alerts',   icon: '🔔', label: 'Alerts' },
+              ] as { id: DrawerTab; icon: string; label: string }[]
+            ).map(({ id, icon, label }) => (
+              <button
+                key={id}
+                className={`wc-drawer-icon-btn${drawerTab === id && drawerOpen ? ' wc-drawer-icon-btn--active' : ''}`}
+                title={label}
+                aria-label={label}
+                onClick={() => {
+                  if (drawerOpen && drawerTab === id) {
+                    setDrawerOpen(false); // toggle closed
+                  } else {
+                    setDrawerTab(id);
+                    setDrawerOpen(true);
+                  }
+                }}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+
+          {/* Sliding content panel */}
+          <div className="wc-drawer-panel">
+            <div className="wc-drawer-panel-header">
+              <span className="wc-drawer-panel-title">
+                {{ chat: 'Chat', calendar: 'Calendar', tv: 'TV Schedule', alerts: 'Alerts' }[drawerTab]}
+              </span>
+              <button
+                className="wc-topbar-icon-btn"
+                aria-label="Close panel"
+                onClick={() => setDrawerOpen(false)}
+                style={{ fontSize: '0.8rem' }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="wc-drawer-panel-body">
+              {drawerTab === 'chat' && (
+                <div className="wc-content-empty">
+                  <p style={{ fontSize: '1.5rem' }}>💬</p>
+                  <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
+                    Chat &amp; trashtalk — coming soon
+                  </p>
+                </div>
+              )}
+              {drawerTab === 'calendar' && (
+                <div className="wc-cal-panel">
+                  {!selectedFixture ? (
+                    <div className="wc-content-empty">
+                      <p style={{ fontSize: '1.5rem' }}>📅</p>
+                      <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
+                        Select a match to add it to your calendar.
+                      </p>
+                    </div>
+                  ) : (() => {
+                    const f = selectedFixture;
+                    const homeCode = teamCode(f.homeTeam);
+                    const awayCode = teamCode(f.awayTeam);
+                    const kickoff = new Date(f.startsAt).toLocaleString(undefined, {
+                      weekday: 'short', month: 'short', day: 'numeric',
+                      hour: 'numeric', minute: '2-digit'
+                    });
+                    const url = `/api/calendar/matchup/${selectedMatchupId}/fixture/${f.id}`;
+                    return (
+                      <div className="wc-cal-single">
+                        <div className="wc-cal-single-teams">
+                          <span className="wc-cal-single-flag">{teamFlag(f.homeTeam)}</span>
+                          <span className="wc-cal-single-code">{homeCode}</span>
+                          <span className="wc-cal-single-vs">vs</span>
+                          <span className="wc-cal-single-code">{awayCode}</span>
+                          <span className="wc-cal-single-flag">{teamFlag(f.awayTeam)}</span>
+                        </div>
+                        <div className="wc-cal-single-meta">
+                          <span>{kickoff}</span>
+                          {(f.venue || f.city) && (
+                            <span>{[f.venue, f.city].filter(Boolean).join(' · ')}</span>
+                          )}
+                        </div>
+                        <a
+                          href={url}
+                          download={`${homeCode}-vs-${awayCode}.ics`}
+                          className="wc-btn wc-btn-primary wc-cal-single-btn"
+                        >
+                          📅 Add to Calendar
+                        </a>
+                        <p className="wc-cal-hint">
+                          Opens in Apple Calendar, Google Calendar, or Outlook.
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+              {drawerTab === 'tv' && (
+                <div className="wc-content-empty">
+                  <p style={{ fontSize: '1.5rem' }}>📺</p>
+                  <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
+                    Broadcast &amp; streaming info — coming soon
+                  </p>
+                </div>
+              )}
+              {drawerTab === 'alerts' && (
+                <div className="wc-content-empty">
+                  <p style={{ fontSize: '1.5rem' }}>🔔</p>
+                  <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
+                    Match notifications — coming soon
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      {/* Mobile bottom nav */}
+      <nav className="wc-mobile-nav" aria-label="Mobile navigation">
+        <button
+          className="wc-mobile-nav-btn"
+          aria-pressed={mobileView === 'feed'}
+          onClick={() => setMobileView('feed')}
+        >
+          <span>📋</span>
+          <span>Fixtures</span>
+        </button>
+        <button
+          className="wc-mobile-nav-btn"
+          aria-pressed={mobileView === 'content'}
+          disabled={!selectedMatchupId}
+          onClick={() => setMobileView('content')}
+        >
+          <span>{hasLiveFixtures ? '🔴' : '🏟️'}</span>
+          <span>Detail</span>
+        </button>
+      </nav>
+
+      {/* Score chart modal */}
+      {scoreChartOpen && selectedMatchup && (
+        <div
+          className="wc-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Score breakdown"
+          onClick={(e) => { if (e.target === e.currentTarget) setScoreChartOpen(false); }}
+        >
+          <div className="wc-modal wc-modal--wide">
+            <div className="wc-modal-header">
+              <h3 style={{ margin: 0, fontSize: '1rem' }}>Score by Matchday</h3>
+              <button
+                className="wc-topbar-icon-btn"
+                aria-label="Close"
+                onClick={() => setScoreChartOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            {renderScoreChart()}
+          </div>
+        </div>
+      )}
+
+      {/* Profile / settings modal */}
+      {profileModalOpen && (
+        <div
+          className="wc-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Settings"
+          onClick={(e) => { if (e.target === e.currentTarget) setProfileModalOpen(false); }}
+        >
+          <div className="wc-modal">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>Settings</h3>
+              <button
+                className="wc-topbar-icon-btn"
+                aria-label="Close settings"
+                onClick={() => setProfileModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            {renderProfile()}
+          </div>
+        </div>
+      )}
+
+      {/* Join modal */}
+      {joinOpen && (
+        <div
+          className="wc-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Join matchup"
+        >
+          <div className="wc-modal">
+            <h3 style={{ margin: 0 }}>Join a Matchup</h3>
+            <p className="wc-subtitle">Enter the invite code from your opponent.</p>
+            <form className="wc-inline-form" onSubmit={joinMatchup}>
+              <input
+                className="wc-input"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                placeholder="ABC123XYZ"
+                autoFocus
+              />
+              <button className="wc-btn wc-btn-primary" type="submit" disabled={loading}>
+                Join
+              </button>
+              <button className="wc-btn" type="button" onClick={() => setJoinOpen(false)}>
+                Cancel
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
