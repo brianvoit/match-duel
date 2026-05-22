@@ -7,7 +7,7 @@ import { createServerClient } from '@supabase/ssr';
  * - Unauthenticated requests to protected API routes get a 401 JSON response
  * Supabase session cookies are also refreshed on every request as recommended.
  */
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Build a response we can attach refreshed cookies to
