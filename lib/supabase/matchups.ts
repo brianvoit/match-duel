@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { MatchupRow, TournamentRow } from '@/lib/supabase/types';
+import { MatchupRow, MatchupParticipantRow, TournamentRow } from '@/lib/supabase/types';
+import { initializeFirstRoundPickOrder } from '@/lib/supabase/pickOrder';
 
 function buildInviteCode(length = 10): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -114,4 +115,74 @@ export async function createMatchupWithInvite(input: {
   }
 
   throw new Error('Unable to create unique invite code after retries.');
+}
+
+export interface AcceptInviteResult {
+  matchupId: string;
+  alreadyJoined: boolean;
+}
+
+export type AcceptInviteError =
+  | { error: 'not_found' }
+  | { error: 'not_active' }
+  | { error: 'full' };
+
+export async function acceptMatchupInvite(
+  rawInviteCode: string,
+  appUserId: string
+): Promise<AcceptInviteResult | AcceptInviteError> {
+  const service = createServiceRoleClient();
+  const inviteCode = rawInviteCode.trim().toUpperCase();
+
+  const { data: matchup } = await service
+    .from('matchup')
+    .select('id, tournament_id, invite_code, status, created_by, created_at')
+    .eq('invite_code', inviteCode)
+    .maybeSingle<MatchupRow>();
+
+  if (!matchup) return { error: 'not_found' };
+  if (matchup.status !== 'ACTIVE') return { error: 'not_active' };
+
+  const { count: existingCount } = await service
+    .from('matchup_participant')
+    .select('id', { count: 'exact', head: true })
+    .eq('matchup_id', matchup.id)
+    .eq('user_id', appUserId);
+
+  if ((existingCount ?? 0) > 0) {
+    return { matchupId: matchup.id, alreadyJoined: true };
+  }
+
+  const { count: totalCount } = await service
+    .from('matchup_participant')
+    .select('id', { count: 'exact', head: true })
+    .eq('matchup_id', matchup.id);
+
+  if ((totalCount ?? 0) >= 2) return { error: 'full' };
+
+  const { data: newParticipant, error: joinError } = await service
+    .from('matchup_participant')
+    .insert({ matchup_id: matchup.id, user_id: appUserId })
+    .select('id')
+    .single<Pick<MatchupParticipantRow, 'id'>>();
+
+  if (joinError) throw new Error(`Failed to join matchup: ${joinError.message}`);
+
+  const { data: creatorParticipant } = await service
+    .from('matchup_participant')
+    .select('id')
+    .eq('matchup_id', matchup.id)
+    .eq('user_id', matchup.created_by)
+    .maybeSingle<Pick<MatchupParticipantRow, 'id'>>();
+
+  if (newParticipant && creatorParticipant) {
+    await initializeFirstRoundPickOrder({
+      matchupId: matchup.id,
+      tournamentId: matchup.tournament_id,
+      joinerParticipantId: newParticipant.id,
+      creatorParticipantId: creatorParticipant.id
+    });
+  }
+
+  return { matchupId: matchup.id, alreadyJoined: false };
 }

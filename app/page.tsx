@@ -2,13 +2,20 @@ import { redirect } from 'next/navigation';
 import { AuthControls } from '@/app/components/auth-controls';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
-export default async function HomePage() {
+interface PageProps {
+  searchParams: Promise<{ error?: string }>;
+}
+
+export default async function HomePage({ searchParams }: PageProps) {
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase.auth.getUser();
 
   if (data.user) {
     redirect('/play');
   }
+
+  const { error } = await searchParams;
+  const noAccess = error === 'no_access';
 
   return (
     <div className="wc-landing">
@@ -25,12 +32,25 @@ export default async function HomePage() {
         <h1 className="wc-landing-title">
           World Cup<br />Pick&apos;Em &lsquo;26
         </h1>
-        <p className="wc-landing-sub">
-          Invite a friend. Claim a team on every match.<br />
-          The one who calls more winners takes the cup.
-        </p>
-        <AuthControls isLoggedIn={false} className="wc-btn wc-btn-lg wc-btn-primary" />
-        <p className="wc-landing-hint">Invite-only · Sign in with Google to get started</p>
+        {noAccess ? (
+          <>
+            <p className="wc-landing-sub" style={{ color: '#ef4444' }}>
+              This app is invite-only. You need a challenge link from a friend to join.
+            </p>
+            <p className="wc-landing-hint">Already have a link? Open it to sign in and accept.</p>
+          </>
+        ) : (
+          <>
+            <p className="wc-landing-sub">
+              Invite a friend. Claim a team on every match.<br />
+              The one who calls more winners takes the cup.
+            </p>
+            <AuthControls isLoggedIn={false} className="wc-btn wc-btn-lg wc-btn-primary" />
+          </>
+        )}
+        {!noAccess && (
+          <p className="wc-landing-hint">Invite-only · Sign in with Google to get started</p>
+        )}
       </section>
 
       {/* ── How it works ────────────────────────────────────────────────── */}
