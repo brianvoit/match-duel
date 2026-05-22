@@ -1,6 +1,6 @@
 import { createServiceRoleClient } from '@/lib/supabase/service';
 
-export const ADMIN_EMAILS = ['brianvoit@plaudit.com', 'brianvoit@me.com'];
+export const ADMIN_EMAILS = ['brianvoit@me.com'];
 
 export function isAdminEmail(email: string | null | undefined): boolean {
   if (!email) return false;

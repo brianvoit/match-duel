@@ -304,6 +304,13 @@ select {
   align-items: center;
 }
 
+.wc-auth-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
 .wc-round-label {
   display: inline-flex;
   border: 1px solid var(--line);

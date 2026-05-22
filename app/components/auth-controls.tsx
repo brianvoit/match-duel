@@ -1,6 +1,7 @@
 'use client';
 
 import { createClient } from '@/lib/supabase/client';
+import type { Provider } from '@supabase/supabase-js';
 
 interface AuthControlsProps {
   isLoggedIn: boolean;
@@ -10,12 +11,9 @@ interface AuthControlsProps {
 export function AuthControls({ isLoggedIn, className }: AuthControlsProps) {
   const supabase = createClient();
 
-  async function signInWithGoogle() {
+  async function signInWith(provider: Provider) {
     const redirectTo = `${window.location.origin}/auth/callback`;
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo }
-    });
+    await supabase.auth.signInWithOAuth({ provider, options: { redirectTo } });
   }
 
   async function signOut() {
@@ -32,8 +30,21 @@ export function AuthControls({ isLoggedIn, className }: AuthControlsProps) {
   }
 
   return (
-    <button type="button" className={className ?? 'wc-btn wc-btn-primary'} onClick={signInWithGoogle}>
-      Sign In with Google
-    </button>
+    <div className="wc-auth-buttons">
+      <button
+        type="button"
+        className={className ?? 'wc-btn wc-btn-primary'}
+        onClick={() => signInWith('google')}
+      >
+        Sign in with Google
+      </button>
+      <button
+        type="button"
+        className={className ?? 'wc-btn wc-btn-primary'}
+        onClick={() => signInWith('apple')}
+      >
+        Sign in with Apple
+      </button>
+    </div>
   );
 }

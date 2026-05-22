@@ -1,6 +1,7 @@
 'use client';
 
 import { createClient } from '@/lib/supabase/client';
+import type { Provider } from '@supabase/supabase-js';
 
 interface JoinButtonProps {
   inviteCode: string;
@@ -18,10 +19,10 @@ export function JoinButton({ inviteCode, isLoggedIn }: JoinButtonProps) {
     }
   }
 
-  async function handleSignIn() {
+  async function handleSignIn(provider: Provider) {
     const supabase = createClient();
     const redirectTo = `${window.location.origin}/auth/callback?invite=${inviteCode}`;
-    await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
+    await supabase.auth.signInWithOAuth({ provider, options: { redirectTo } });
   }
 
   if (isLoggedIn) {
@@ -33,8 +34,21 @@ export function JoinButton({ inviteCode, isLoggedIn }: JoinButtonProps) {
   }
 
   return (
-    <button type="button" className="wc-btn wc-btn-lg wc-btn-primary" onClick={handleSignIn}>
-      Sign in with Google to Accept
-    </button>
+    <div className="wc-auth-buttons">
+      <button
+        type="button"
+        className="wc-btn wc-btn-lg wc-btn-primary"
+        onClick={() => handleSignIn('google')}
+      >
+        Accept with Google
+      </button>
+      <button
+        type="button"
+        className="wc-btn wc-btn-lg wc-btn-primary"
+        onClick={() => handleSignIn('apple')}
+      >
+        Accept with Apple
+      </button>
+    </div>
   );
 }
