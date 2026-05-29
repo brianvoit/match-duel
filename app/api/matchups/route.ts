@@ -10,6 +10,7 @@ interface MatchupListItem {
   tournamentId: string;
   createdAt: string;
   joinedAt: string;
+  isCreator: boolean;
   opponentDisplayName: string | null;
   opponentEmail: string | null;
   opponentAvatarUrl: string | null;
@@ -41,7 +42,8 @@ export async function GET() {
           invite_code,
           status,
           tournament_id,
-          created_at
+          created_at,
+          created_by
         )
       `
       )
@@ -111,6 +113,7 @@ export async function GET() {
           tournamentId: matchup.tournament_id as string,
           createdAt: matchup.created_at as string,
           joinedAt: row.joined_at as string,
+          isCreator: (matchup.created_by as string) === appUser.id,
           opponentDisplayName: opponent?.displayName ?? null,
           opponentEmail: opponent?.email ?? null,
           opponentAvatarUrl: opponent?.avatarUrl ?? null

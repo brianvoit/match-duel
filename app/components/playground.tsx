@@ -18,6 +18,7 @@ type Matchup = {
   tournamentId: string;
   createdAt: string;
   joinedAt: string;
+  isCreator: boolean;
   opponentDisplayName: string | null;
   opponentEmail: string | null;
   opponentAvatarUrl: string | null;
@@ -46,6 +47,7 @@ type Fixture = {
   groupName: string | null;
   venue: string | null;
   city: string | null;
+  matchday: number | null;
 };
 
 type ParticipantStanding = {
@@ -81,6 +83,19 @@ interface PlaygroundProps {
   userEmail: string;
   userAvatarUrl?: string | null;
 }
+
+// Static tournament catalogue — shown in the top-bar dropdown.
+// Active matchup determines which entry is highlighted; others are future/historical.
+const TOURNAMENT_CATALOGUE = [
+  { id: 'wc-mens-2026',   label: "World Cup '26",         active: true  },
+  { id: 'wc-womens-2027', label: "Women's World Cup '27", active: false },
+  { id: 'wc-mens-2022',   label: "World Cup '22",         active: false },
+  { id: 'wc-womens-2023', label: "Women's World Cup '23", active: false },
+  { id: 'wc-mens-2018',   label: "World Cup '18",         active: false },
+  { id: 'wc-womens-2019', label: "Women's World Cup '19", active: false },
+  { id: 'wc-mens-2014',   label: "World Cup '14",         active: false },
+  { id: 'wc-womens-2015', label: "Women's World Cup '15", active: false },
+];
 
 // Stage points mirror WORLD_CUP_2026_SCORING (client-side outcome display only)
 const STAGE_POINTS: Record<string, number> = {
@@ -158,21 +173,22 @@ function StatusGlyph({ status, isLocked, size = 13 }: { status: string; isLocked
     );
   }
   if (isLocked) {
+    // Closed — symmetric U-shackle, both arms fully seated into body
     return (
       <span className="wc-status-glyph wc-status-glyph--locked" aria-label="Locked">
         <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
           <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-          <path d="M4.5 6V4.5a2.5 2.5 0 015 0V6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          <path d="M3.5 6V4A3.5 3.5 0 0110.5 4V6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
         </svg>
       </span>
     );
   }
-  // Open
+  // Open — body sits left, shackle rises from right side of body, arcs right, free arm hangs without connecting
   return (
     <span className="wc-status-glyph wc-status-glyph--open" aria-label="Open">
       <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
-        <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-        <path d="M4.5 6V4a2.5 2.5 0 015 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        <rect x="1" y="7" width="7.5" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M7 7V4A3 3 0 0113 4V6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       </svg>
     </span>
   );
@@ -207,6 +223,10 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [joinOpen, setJoinOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
+  const [copyConfirmed, setCopyConfirmed] = useState(false);
+  const [cancelMatchupId, setCancelMatchupId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   // ── Filter state ───────────────────────────────────────────────────────────
@@ -218,7 +238,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
   // ── Data state ─────────────────────────────────────────────────────────────
   const [matchups, setMatchups] = useState<Matchup[]>([]);
-  const [selectedMatchupId, setSelectedMatchupId] = useState<string>('');
+  const [selectedMatchupId, setSelectedMatchupId] = useState<string | null>(null);
   const [selectedFixtureId, setSelectedFixtureId] = useState<string | null>(null);
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [allRounds, setAllRounds] = useState<Round[]>([]);
@@ -509,14 +529,41 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       body: JSON.stringify({})
     });
     const payload = await res.json();
+    setLoading(false);
     if (!res.ok || !payload.ok) {
       showNotice('error', payload.error ?? 'Failed to create matchup.');
-      setLoading(false);
       return;
     }
-    showNotice('ok', `Matchup created! Invite code: ${payload.matchup.inviteCode}`);
+    setCreatedInviteCode(payload.matchup.inviteCode);
     await loadMatchups();
+  }
+
+  async function copyInviteLink(code: string) {
+    const link = `${window.location.origin}/join/${code}`;
+    await navigator.clipboard.writeText(link);
+    setCopyConfirmed(true);
+    setTimeout(() => setCopyConfirmed(false), 2000);
+  }
+
+  function closeCreateModal() {
+    setCreateOpen(false);
+    setCreatedInviteCode(null);
+    setCopyConfirmed(false);
+  }
+
+  async function cancelMatchup() {
+    if (!cancelMatchupId) return;
+    setLoading(true);
+    const res = await fetch(`/api/matchups/${cancelMatchupId}`, { method: 'DELETE' });
+    const payload = await res.json();
     setLoading(false);
+    setCancelMatchupId(null);
+    if (!res.ok || !payload.ok) {
+      showNotice('error', payload.error ?? 'Failed to cancel matchup.');
+      return;
+    }
+    if (selectedMatchupId === cancelMatchupId) setSelectedMatchupId(null);
+    await loadMatchups();
   }
 
   async function joinMatchup(event: FormEvent<HTMLFormElement>) {
@@ -702,7 +749,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 <span>{f.awayScore !== null ? f.awayScore : '—'}</span>
               </div>
               <div className="wc-fd-scorebug-status">
-                <StatusGlyph status={f.status} isLocked={f.isLocked} size={13} />
+                <StatusGlyph status={f.status} isLocked={f.isLocked || iPickFirst === false} size={13} />
               </div>
               <div className="wc-fd-scorebug-kickoff">
                 {new Date(f.startsAt).toLocaleString(undefined, {
@@ -1038,50 +1085,85 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       );
     }
 
-    // Build per-round and cumulative points
-    // allRounds uses order_index (snake_case from DB); fallback objects use orderIndex
+    // ── Build chart data: per-matchday for Group Stage, per-stage for knockouts ──
+
+    const STAGE_ABBR: Record<string, string> = {
+      GROUP: 'GS', ROUND_OF_32: 'Ro32', ROUND_OF_16: 'Ro16',
+      QUARTERFINAL: 'QF', SEMIFINAL: 'SF', THIRD_PLACE: '3P', FINAL: 'F',
+    };
+    const KNOCKOUT_ORDER = ['ROUND_OF_32','ROUND_OF_16','QUARTERFINAL','SEMIFINAL','THIRD_PLACE','FINAL'];
+
+    type ChartPoint = { label: string; myCum: number; oppCum: number; played: boolean; isStage?: boolean };
+
+    let myCum = 0, oppCum = 0;
+    const chartData: ChartPoint[] = [];
+
+    // Group Stage: compute per-matchday cumulative using fixture.matchday field
+    const mdGroups = new Map<number, Fixture[]>();
+    for (const f of fixtures) {
+      const md = f.matchday ?? 1;
+      if (!mdGroups.has(md)) mdGroups.set(md, []);
+      mdGroups.get(md)!.push(f);
+    }
+    const sortedMds = [...mdGroups.entries()].sort(([a], [b]) => a - b);
+    for (const [md, mdFix] of sortedMds) {
+      let myMd = 0, oppMd = 0;
+      for (const f of mdFix) {
+        const myPick = pickMap[f.id] ?? f.myPickSide;
+        myMd  += computePickPoints(f, myPick,          currentRound?.stage ?? 'GROUP') ?? 0;
+        oppMd += computePickPoints(f, f.opponentPickSide, currentRound?.stage ?? 'GROUP') ?? 0;
+      }
+      myCum  += myMd;
+      oppCum += oppMd;
+      const anyFinal = mdFix.some((f) => f.status === 'FINAL');
+      chartData.push({ label: `MD${md}`, myCum, oppCum, played: anyFinal });
+    }
+
+    // Knockout stages from roundResults + future placeholders from allRounds
+    const resultMap = new Map(roundResults.map((r) => [r.stage, r]));
+    for (const stage of KNOCKOUT_ORDER) {
+      const result = resultMap.get(stage);
+      const myEntry  = result?.participants.find((p) => p.participantId === myParticipantId);
+      const oppEntry = result?.participants.find((p) => p.participantId !== myParticipantId);
+      if (result) {
+        myCum  += myEntry?.points  ?? 0;
+        oppCum += oppEntry?.points ?? 0;
+      }
+      const inAllRounds = allRounds.some((r) => r.stage === stage);
+      if (inAllRounds || result) {
+        chartData.push({ label: STAGE_ABBR[stage] ?? stage, myCum, oppCum, played: Boolean(result), isStage: true });
+      }
+    }
+
+    // Legacy: keep `data` alias and `sorted`/`resultMap` for the table below
     const sorted = [...rounds].sort((a, b) =>
       ('order_index' in a ? a.order_index : (a as {orderIndex:number}).orderIndex) -
       ('order_index' in b ? b.order_index : (b as {orderIndex:number}).orderIndex)
     );
-    const resultMap = new Map(roundResults.map((r) => [r.roundId, r]));
+    const resultMapById = new Map(roundResults.map((r) => [r.roundId, r]));
 
-    let myCum = 0;
-    let oppCum = 0;
-    const data = sorted.map((round) => {
-      const result = resultMap.get(round.id);
-      const myEntry = result?.participants.find((p) => p.participantId === myParticipantId);
-      const oppEntry = result?.participants.find((p) => p.participantId !== myParticipantId);
-      const myRound = myEntry?.points ?? 0;
-      const oppRound = oppEntry?.points ?? 0;
-      myCum += myRound;
-      oppCum += oppRound;
-      return {
-        label: fmtStage(round.stage).split(' ').map((w: string) => w[0]).join(''),
-        myRound,
-        oppRound,
-        myCum,
-        oppCum,
-        played: Boolean(result)
-      };
-    });
-
-    // SVG bar chart — cumulative totals per round
-    const W = 520, H = 180, PL = 32, PR = 12, PT = 12, PB = 28;
+    // Evenly-spaced line chart: one x-position per matchday / knockout stage
+    const W = 520, H = 190, PL = 36, PR = 16, PT = 16, PB = 36;
     const cW = W - PL - PR;
     const cH = H - PT - PB;
-    const maxVal = Math.max(...data.map((d) => Math.max(d.myCum, d.oppCum)), 1) * 1.08;
-    const n = data.length;
-    const barGroupW = cW / n;
-    const barW = Math.min(barGroupW * 0.28, 20);
+    const n = chartData.length;
+    const step = n > 1 ? cW / (n - 1) : cW;
+
+    const toX = (i: number) => PL + i * step;
+    const maxVal = Math.max(...chartData.map((d) => Math.max(d.myCum, d.oppCum)), 8) * 1.12;
     const toY = (v: number) => PT + cH - (v / maxVal) * cH;
-    const toX = (i: number) => PL + i * barGroupW + barGroupW / 2;
 
-    // Y axis ticks
+    // Polyline point strings for played points only (connected line)
+    const playedPts = chartData.map((d, i) => ({ ...d, i })).filter((d) => d.played);
+    const myPts  = playedPts.map((d) => `${toX(d.i).toFixed(1)},${toY(d.myCum).toFixed(1)}`).join(' ');
+    const oppPts = playedPts.map((d) => `${toX(d.i).toFixed(1)},${toY(d.oppCum).toFixed(1)}`).join(' ');
+
+    // Find index where knockout stages begin (for the divider line)
+    const knockoutStartIdx = chartData.findIndex((d) => d.isStage);
+
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(maxVal * f));
-
-    const myColor = 'var(--accent)';
-    const oppColor = 'var(--text-2)';
+    const myColor  = 'var(--accent)';
+    const oppColor = '#94a3b8';
 
     return (
       <>
@@ -1090,67 +1172,56 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             viewBox={`0 0 ${W} ${H}`}
             width="100%"
             style={{ display: 'block' }}
-            aria-label="Score by matchday"
+            aria-label="Cumulative score by matchday"
           >
             {/* Y grid + labels */}
-            {yTicks.map((v) => {
-              const y = toY(v);
-              return (
-                <g key={`tick-${v}`}>
-                  <line
-                    x1={PL} y1={y} x2={W - PR} y2={y}
-                    stroke="var(--line)" strokeWidth={1}
-                  />
-                  <text
-                    x={PL - 4} y={y + 4}
-                    textAnchor="end"
-                    fontSize={9}
-                    fill="var(--text-2)"
-                  >
-                    {v}
-                  </text>
-                </g>
-              );
-            })}
+            {yTicks.map((v) => (
+              <g key={`y-${v}`}>
+                <line x1={PL} y1={toY(v)} x2={W - PR} y2={toY(v)}
+                  stroke="var(--line)" strokeWidth={v === 0 ? 1.5 : 0.8} />
+                <text x={PL - 5} y={toY(v) + 4} textAnchor="end" fontSize={9} fill="var(--text-2)">{v}</text>
+              </g>
+            ))}
 
-            {/* Bars + X labels */}
-            {data.map((d, i) => {
-              const cx = toX(i);
-              return (
-                <g key={`bar-${i}`}>
-                  {/* My bar */}
-                  <rect
-                    x={cx - barW - 1}
-                    y={toY(d.myCum)}
-                    width={barW}
-                    height={Math.max(cH - (toY(d.myCum) - PT), 0)}
-                    fill={d.played ? myColor : 'var(--line)'}
-                    opacity={d.played ? 0.85 : 0.4}
-                    rx={2}
-                  />
-                  {/* Opponent bar */}
-                  <rect
-                    x={cx + 1}
-                    y={toY(d.oppCum)}
-                    width={barW}
-                    height={Math.max(cH - (toY(d.oppCum) - PT), 0)}
-                    fill={d.played ? oppColor : 'var(--line)'}
-                    opacity={d.played ? 0.6 : 0.3}
-                    rx={2}
-                  />
-                  {/* X label */}
-                  <text
-                    x={cx}
-                    y={H - 6}
-                    textAnchor="middle"
-                    fontSize={9}
-                    fill="var(--text-2)"
-                  >
-                    {d.label}
-                  </text>
-                </g>
-              );
-            })}
+            {/* Divider between Group Stage matchdays and knockout stages */}
+            {knockoutStartIdx > 0 && (
+              <line
+                x1={toX(knockoutStartIdx) - step / 2} y1={PT}
+                x2={toX(knockoutStartIdx) - step / 2} y2={PT + cH}
+                stroke="var(--line)" strokeWidth={1} strokeDasharray="4 3"
+              />
+            )}
+
+            {/* X axis labels */}
+            {chartData.map((d, i) => (
+              <text key={`xl-${i}`}
+                x={toX(i)} y={H - 6}
+                textAnchor="middle" fontSize={8.5}
+                fill={d.played ? 'var(--text-1)' : 'var(--text-2)'}
+              >
+                {d.label}
+              </text>
+            ))}
+
+            {/* Opponent line */}
+            {oppPts && (
+              <polyline points={oppPts} fill="none"
+                stroke={oppColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" opacity={0.75} />
+            )}
+
+            {/* My line */}
+            {myPts && (
+              <polyline points={myPts} fill="none"
+                stroke={myColor} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+            )}
+
+            {/* Data dots */}
+            {playedPts.map((d) => (
+              <g key={`dot-${d.i}`}>
+                <circle cx={toX(d.i)} cy={toY(d.myCum)}  r={3.5} fill={myColor} />
+                <circle cx={toX(d.i)} cy={toY(d.oppCum)} r={3}   fill={oppColor} opacity={0.8} />
+              </g>
+            ))}
           </svg>
         </div>
 
@@ -1298,32 +1369,17 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
           {tournamentMenuOpen && (
             <div className="wc-dropdown wc-dropdown--left" role="menu">
-              <div className="wc-dropdown-header">
-                <span className="wc-dropdown-email">Your Tournaments</span>
-              </div>
-              <div className="wc-dropdown-divider" />
-              {tournaments.length > 0 ? (
-                tournaments.map((t) => (
-                  <button
-                    key={t.id}
-                    className="wc-dropdown-item"
-                    role="menuitem"
-                    aria-pressed={t.id === activeTournament?.id}
-                    onClick={() => setTournamentMenuOpen(false)}
-                  >
-                    <span className="wc-dropdown-item-icon">
-                      {t.id === activeTournament?.id ? '●' : '○'}
-                    </span>
-                    {t.label}
-                  </button>
-                ))
-              ) : (
-                <div style={{ padding: '10px 14px' }}>
-                  <span className="wc-subtitle" style={{ fontSize: '0.82rem' }}>
-                    No tournaments yet
-                  </span>
-                </div>
-              )}
+              {TOURNAMENT_CATALOGUE.map((t) => (
+                <button
+                  key={t.id}
+                  className={`wc-dropdown-item${!t.active ? ' wc-dropdown-item--muted' : ''}`}
+                  role="menuitem"
+                  disabled={!t.active}
+                  onClick={() => setTournamentMenuOpen(false)}
+                >
+                  <span className="wc-dropdown-item-label">{t.label}</span>
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -1390,7 +1446,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           <button
             className="wc-btn wc-btn-sm wc-btn-primary"
             type="button"
-            onClick={createMatchup}
+            onClick={() => setCreateOpen(true)}
             disabled={loading}
           >
             + Create
@@ -1505,25 +1561,37 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               const oppInit = initials(oppName, '?');
               const isActive = m.matchupId === selectedMatchupId;
 
+              const isPending = !oppName && m.isCreator;
+
               return (
-                <button
-                  key={m.matchupId}
-                  className="wc-nav-item"
-                  aria-current={isActive ? 'true' : undefined}
-                  title={oppName ? `vs ${oppName}` : 'Pending opponent'}
-                  onClick={() => setSelectedMatchupId(m.matchupId)}
-                >
-                  {leftNavOpen ? (
-                    <span className="wc-nav-item-name">
-                      vs {oppName ?? <em style={{ color: 'var(--text-1)' }}>Pending</em>}
-                    </span>
-                  ) : (
-                    /* Collapsed: opponent initial avatar */
-                    <span className="wc-nav-opp-avatar" aria-hidden="true">
-                      {oppName ? oppInit : '?'}
-                    </span>
+                <div key={m.matchupId} className="wc-nav-item-row">
+                  <button
+                    className="wc-nav-item"
+                    aria-current={isActive ? 'true' : undefined}
+                    title={oppName ? `vs ${oppName}` : 'Pending opponent'}
+                    onClick={() => setSelectedMatchupId(m.matchupId)}
+                  >
+                    {leftNavOpen ? (
+                      <span className="wc-nav-item-name">
+                        vs {oppName ?? <em style={{ color: 'var(--text-1)' }}>Pending</em>}
+                      </span>
+                    ) : (
+                      <span className="wc-nav-opp-avatar" aria-hidden="true">
+                        {oppName ? oppInit : '?'}
+                      </span>
+                    )}
+                  </button>
+                  {isPending && leftNavOpen && (
+                    <button
+                      className="wc-nav-cancel-btn"
+                      title="Cancel matchup"
+                      aria-label="Cancel matchup"
+                      onClick={(e) => { e.stopPropagation(); setCancelMatchupId(m.matchupId); }}
+                    >
+                      ✕
+                    </button>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -1653,7 +1721,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                           {hasFilters ? 'No fixtures match the filter.' : 'No fixtures yet.'}
                         </div>
                       ) : (() => {
-                        const matchdays = computeMatchdays(roundFixtures);
                         let lastMatchday = 0;
                         return roundFixtures.map((f) => {
                           const isSelected = f.id === selectedFixtureId;
@@ -1663,7 +1730,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                           // or when this fixture is explicitly assigned to me.
                           const hasPickOrder = Object.keys(pickOrder).length > 0;
                           const isMyFixture = !hasPickOrder || pickOrder[f.id] === myParticipantId;
-                          const thisMatchday = matchdays.get(f.id) ?? 1;
+                          const thisMatchday = f.matchday ?? 1;
                           const showMatchdayHeader = thisMatchday !== lastMatchday;
                           if (showMatchdayHeader) lastMatchday = thisMatchday;
 
@@ -1710,8 +1777,22 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                                   : f.status === 'FINAL'
                                     ? (pts !== null && pts > 0 ? 'correct' : 'wrong')
                                     : 'pending';
+                                const isFinal = f.status === 'FINAL';
+                                const homePts = isFinal ? computePickPoints(f, 'HOME', round.stage) : null;
+                                const awayPts = isFinal ? computePickPoints(f, 'AWAY', round.stage) : null;
+                                const homePickExists = myPick === 'HOME' || f.opponentPickSide === 'HOME';
+                                const awayPickExists = myPick === 'AWAY' || f.opponentPickSide === 'AWAY';
                                 return (
                                   <div className="wc-scorebug-body">
+                                    {/* Left pts — home side picker */}
+                                    <div className="wc-scorebug-pts">
+                                      {isFinal && homePickExists && (
+                                        <span className={`wc-scorebug-pts-val${homePts && homePts > 0 ? ' wc-scorebug-pts-val--scored' : ''}`}>
+                                          {homePts && homePts > 0 ? `+${homePts}` : '0'}
+                                        </span>
+                                      )}
+                                    </div>
+
                                     <div className="wc-scorebug-team">
                                       <div className="wc-scorebug-crest-wrap">
                                         <span className="wc-scorebug-crest">{teamFlag(f.homeTeam)}</span>
@@ -1741,7 +1822,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                                         <span>{f.awayScore !== null ? f.awayScore : '—'}</span>
                                       </div>
                                       <div className="wc-scorebug-status-row">
-                                        <StatusGlyph status={f.status} isLocked={f.isLocked} />
+                                        <StatusGlyph status={f.status} isLocked={f.isLocked || !isMyFixture} />
                                       </div>
                                     </div>
                                     <div className="wc-scorebug-team">
@@ -1765,6 +1846,15 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                                         )}
                                       </div>
                                       <div className="wc-scorebug-code">{teamCode(f.awayTeam)}</div>
+                                    </div>
+
+                                    {/* Right pts — away side picker */}
+                                    <div className="wc-scorebug-pts">
+                                      {isFinal && awayPickExists && (
+                                        <span className={`wc-scorebug-pts-val${awayPts && awayPts > 0 ? ' wc-scorebug-pts-val--scored' : ''}`}>
+                                          {awayPts && awayPts > 0 ? `+${awayPts}` : '0'}
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -2027,6 +2117,92 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               </button>
             </div>
             {renderProfile()}
+          </div>
+        </div>
+      )}
+
+      {/* Cancel matchup confirm modal */}
+      {cancelMatchupId && (
+        <div
+          className="wc-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cancel matchup"
+          onClick={(e) => { if (e.target === e.currentTarget) setCancelMatchupId(null); }}
+        >
+          <div className="wc-modal">
+            <h3 style={{ margin: 0 }}>Cancel Matchup?</h3>
+            <p className="wc-subtitle">This will delete the pending matchup and its invite link. This can&apos;t be undone.</p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="wc-btn wc-btn-danger"
+                type="button"
+                disabled={loading}
+                onClick={cancelMatchup}
+              >
+                {loading ? 'Cancelling…' : 'Yes, Cancel It'}
+              </button>
+              <button className="wc-btn" type="button" onClick={() => setCancelMatchupId(null)}>
+                Keep It
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create modal */}
+      {createOpen && (
+        <div
+          className="wc-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Create matchup"
+          onClick={(e) => { if (e.target === e.currentTarget) closeCreateModal(); }}
+        >
+          <div className="wc-modal">
+            {createdInviteCode ? (
+              <>
+                <h3 style={{ margin: 0 }}>Matchup Created!</h3>
+                <p className="wc-subtitle">Share this link with your opponent to start the duel.</p>
+                <div className="wc-invite-link-box">
+                  <span className="wc-invite-link-text">
+                    {`${window.location.origin}/join/${createdInviteCode}`}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="wc-btn wc-btn-primary"
+                    type="button"
+                    onClick={() => copyInviteLink(createdInviteCode)}
+                  >
+                    {copyConfirmed ? 'Copied!' : 'Copy Link'}
+                  </button>
+                  <button className="wc-btn" type="button" onClick={closeCreateModal}>
+                    Done
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 style={{ margin: 0 }}>Create a Matchup</h3>
+                <p className="wc-subtitle">
+                  A unique invite link will be generated for you to share with one opponent.
+                </p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="wc-btn wc-btn-primary"
+                    type="button"
+                    disabled={loading}
+                    onClick={createMatchup}
+                  >
+                    {loading ? 'Creating…' : 'Create'}
+                  </button>
+                  <button className="wc-btn" type="button" onClick={closeCreateModal}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

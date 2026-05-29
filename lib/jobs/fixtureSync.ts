@@ -18,6 +18,10 @@ function toDbFixtureRow(fixture: ProviderFixture) {
     home_score: fixture.homeScore ?? null,
     away_score: fixture.awayScore ?? null,
     status: fixture.status,
+    matchday: fixture.matchday ?? null,
+    group_name: fixture.groupName ?? null,
+    venue: fixture.venue ?? null,
+    city: fixture.city ?? null,
     last_synced_at: new Date().toISOString()
   };
 }

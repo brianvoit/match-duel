@@ -24,4 +24,7 @@ export const serverEnv = {
   get SUPABASE_PROJECT_REF(): string | undefined {
     return process.env.SUPABASE_PROJECT_REF;
   },
+  get BETA_CODE(): string | undefined {
+    return process.env.BETA_CODE;
+  },
 };

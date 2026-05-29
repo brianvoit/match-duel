@@ -162,7 +162,7 @@ export async function getRoundFixtures(input: { roundId: string }) {
 
   const { data: fixtures, error: fixtureError } = await service
     .from('fixture')
-    .select('id, starts_at, home_team, away_team, home_score, away_score, status, group_name, venue, city')
+    .select('id, starts_at, home_team, away_team, home_score, away_score, status, group_name, venue, city, matchday')
     .eq('round_id', input.roundId)
     .order('starts_at', { ascending: true }) as {
     data: FixtureRow[] | null;
@@ -193,6 +193,7 @@ export async function getRoundFixtures(input: { roundId: string }) {
         groupName: raw.group_name as string | null ?? null,
         venue: raw.venue as string | null ?? null,
         city: raw.city as string | null ?? null,
+        matchday: raw.matchday as number | null ?? null,
       };
     })
   };
@@ -227,7 +228,7 @@ export async function getRoundFixturesForUser(input: {
 
   const { data: fixtures, error: fixtureError } = await service
     .from('fixture')
-    .select('id, starts_at, home_team, away_team, home_score, away_score, status, group_name, venue, city')
+    .select('id, starts_at, home_team, away_team, home_score, away_score, status, group_name, venue, city, matchday')
     .eq('round_id', input.roundId)
     .order('starts_at', { ascending: true }) as {
     data: FixtureRow[] | null;
@@ -309,6 +310,7 @@ export async function getRoundFixturesForUser(input: {
         groupName: (fixture as unknown as Record<string, unknown>).group_name as string | null ?? null,
         venue: (fixture as unknown as Record<string, unknown>).venue as string | null ?? null,
         city: (fixture as unknown as Record<string, unknown>).city as string | null ?? null,
+        matchday: (fixture as unknown as Record<string, unknown>).matchday as number | null ?? null,
       };
     })
   };

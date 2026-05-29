@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { AuthControls } from '@/app/components/auth-controls';
+import { BetaGate } from '@/app/components/beta-gate';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 interface PageProps {
@@ -23,7 +23,6 @@ export default async function HomePage({ searchParams }: PageProps) {
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
       <nav className="wc-landing-nav">
         <span className="wc-landing-nav-logo">⚽ Pick&apos;Em</span>
-        <AuthControls isLoggedIn={false} className="wc-btn wc-btn-sm wc-btn-primary" />
       </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────────── */}
@@ -33,24 +32,17 @@ export default async function HomePage({ searchParams }: PageProps) {
           World Cup<br />Pick&apos;Em &lsquo;26
         </h1>
         {noAccess ? (
-          <>
-            <p className="wc-landing-sub" style={{ color: '#ef4444' }}>
-              This app is invite-only. You need a challenge link from a friend to join.
-            </p>
-            <p className="wc-landing-hint">Already have a link? Open it to sign in and accept.</p>
-          </>
+          <p className="wc-landing-sub" style={{ color: '#ef4444' }}>
+            Your beta code didn&apos;t grant access. Make sure you&apos;ve entered it correctly and try again.
+          </p>
         ) : (
-          <>
-            <p className="wc-landing-sub">
-              Invite a friend. Claim a team on every match.<br />
-              The one who calls more winners takes the cup.
-            </p>
-            <AuthControls isLoggedIn={false} className="wc-btn wc-btn-lg wc-btn-primary" />
-          </>
+          <p className="wc-landing-sub">
+            Invite a friend. Claim a team on every match.<br />
+            The one who calls more winners takes the cup.
+          </p>
         )}
-        {!noAccess && (
-          <p className="wc-landing-hint">Invite-only · Sign in with Google to get started</p>
-        )}
+        <BetaGate />
+        <p className="wc-landing-hint">Beta access · Sign in with Google or Apple</p>
       </section>
 
       {/* ── How it works ────────────────────────────────────────────────── */}

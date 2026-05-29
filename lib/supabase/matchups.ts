@@ -3,7 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/service';
 import { MatchupRow, MatchupParticipantRow, TournamentRow } from '@/lib/supabase/types';
 import { initializeFirstRoundPickOrder } from '@/lib/supabase/pickOrder';
 
-function buildInviteCode(length = 10): string {
+function buildInviteCode(length = 6): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const bytes = randomBytes(length);
   let code = '';
