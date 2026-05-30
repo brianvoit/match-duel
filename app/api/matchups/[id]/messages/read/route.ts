@@ -1,7 +1,6 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { ensureAppUser } from '@/lib/supabase/user';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -9,11 +8,8 @@ interface RouteContext {
 
 export async function POST(_req: NextRequest, context: RouteContext) {
   const { id: matchupId } = await context.params;
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-
-  const appUser = await ensureAppUser(user);
+    const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   const service = createServiceRoleClient();
 
   await service

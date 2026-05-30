@@ -1,8 +1,7 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getRoundFixtures, getRoundFixturesForUser } from '@/lib/supabase/rounds';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { ensureAppUser } from '@/lib/supabase/user';
 
 const querySchema = z.object({
   matchupId: z.string().uuid().optional()
@@ -15,15 +14,8 @@ interface RouteContext {
 export async function GET(request: NextRequest, context: RouteContext) {
   const { id: roundId } = await context.params;
 
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: authError
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   const parsed = querySchema.safeParse({
     matchupId: request.nextUrl.searchParams.get('matchupId') ?? undefined
@@ -37,7 +29,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    const appUser = await ensureAppUser(user);
 
     // No matchupId → browse-only mode, no picks returned
     if (!parsed.data.matchupId) {

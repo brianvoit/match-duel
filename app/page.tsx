@@ -7,6 +7,10 @@ interface PageProps {
 }
 
 export default async function HomePage({ searchParams }: PageProps) {
+  if (process.env.BYPASS_AUTH === 'true') {
+    redirect('/play');
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase.auth.getUser();
 

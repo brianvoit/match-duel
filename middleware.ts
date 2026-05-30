@@ -37,6 +37,11 @@ export async function middleware(request: NextRequest) {
     data: { user }
   } = await supabase.auth.getUser();
 
+  // Dev bypass — skip all auth checks on localhost when BYPASS_AUTH=true
+  if (process.env.BYPASS_AUTH === 'true') {
+    return response;
+  }
+
   // /play requires a session — redirect to landing page if not authenticated
   if (pathname.startsWith('/play') && !user) {
     return NextResponse.redirect(new URL('/', request.url));

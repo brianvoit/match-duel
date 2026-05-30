@@ -1,8 +1,7 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentRoundForTournament, resolveTournamentForUserContext } from '@/lib/supabase/rounds';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { ensureAppUser } from '@/lib/supabase/user';
 
 const querySchema = z.object({
   matchupId: z.string().uuid().optional(),
@@ -10,15 +9,8 @@ const querySchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: authError
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   const parsed = querySchema.safeParse({
     matchupId: request.nextUrl.searchParams.get('matchupId') ?? undefined,
@@ -33,7 +25,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const appUser = await ensureAppUser(user);
     const tournamentId = await resolveTournamentForUserContext({
       matchupId: parsed.data.matchupId,
       appUserId: appUser.id,

@@ -1,8 +1,7 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { ensureAppUser } from '@/lib/supabase/user';
 import { createNotificationEvents } from '@/lib/notifications';
 
 interface RouteContext {
@@ -11,11 +10,8 @@ interface RouteContext {
 
 export async function GET(_req: NextRequest, context: RouteContext) {
   const { id: matchupId } = await context.params;
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-
-  const appUser = await ensureAppUser(user);
+    const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   const service = createServiceRoleClient();
 
   // Verify participant
@@ -57,15 +53,12 @@ const sendSchema = z.object({ content: z.string().trim().min(1).max(500) });
 
 export async function POST(req: NextRequest, context: RouteContext) {
   const { id: matchupId } = await context.params;
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => null);
   const parsed = sendSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ ok: false, error: 'Invalid payload.' }, { status: 400 });
-
-  const appUser = await ensureAppUser(user);
   const service = createServiceRoleClient();
 
   const { error } = await service.from('message').insert({

@@ -1,7 +1,6 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { ensureAppUser } from '@/lib/supabase/user';
 
 interface MatchupListItem {
   matchupId: string;
@@ -17,18 +16,10 @@ interface MatchupListItem {
 }
 
 export async function GET() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: authError
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const appUser = await ensureAppUser(user);
     const service = createServiceRoleClient();
 
     // Step 1: get the current user's matchup memberships + matchup metadata

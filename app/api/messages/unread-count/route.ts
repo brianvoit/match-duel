@@ -1,14 +1,10 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { ensureAppUser } from '@/lib/supabase/user';
 
 export async function GET() {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) return NextResponse.json({ ok: false, total: 0 }, { status: 401 });
-
-  const appUser = await ensureAppUser(user);
+    const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   const service = createServiceRoleClient();
 
   const { data: participants } = await service

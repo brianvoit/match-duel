@@ -1,14 +1,10 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { ensureAppUser } from '@/lib/supabase/user';
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json().catch(() => null);
   const endpoint = body?.subscription?.endpoint;
@@ -18,8 +14,6 @@ export async function POST(request: NextRequest) {
   if (!endpoint || !p256dh || !auth) {
     return NextResponse.json({ ok: false, error: 'Invalid subscription object.' }, { status: 400 });
   }
-
-  const appUser = await ensureAppUser(user);
   const service = createServiceRoleClient();
 
   const { error } = await service
@@ -36,19 +30,14 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json().catch(() => null);
   const endpoint = body?.endpoint;
   if (!endpoint) {
     return NextResponse.json({ ok: false, error: 'Missing endpoint.' }, { status: 400 });
   }
-
-  const appUser = await ensureAppUser(user);
   const service = createServiceRoleClient();
 
   await service

@@ -1,9 +1,8 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { bulkUpsertRoundPicks, BulkPickError } from '@/lib/supabase/picks';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { ensureAppUser } from '@/lib/supabase/user';
 import { createNotificationEvents } from '@/lib/notifications';
 
 const pickSchema = z.object({
@@ -22,15 +21,8 @@ interface RouteContext {
 export async function POST(request: Request, context: RouteContext) {
   const { id: matchupId, roundId } = await context.params;
 
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: authError
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   const rawBody = await request.json().catch(() => null);
   const parsed = bulkPickSchema.safeParse(rawBody);
@@ -43,7 +35,6 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
-    const appUser = await ensureAppUser(user);
 
     const result = await bulkUpsertRoundPicks({
       matchupId,

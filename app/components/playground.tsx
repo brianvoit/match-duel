@@ -1306,13 +1306,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       }
     }
 
-    // Legacy: keep `data` alias and `sorted`/`resultMap` for the table below
-    const sorted = [...rounds].sort((a, b) =>
-      ('order_index' in a ? a.order_index : (a as {orderIndex:number}).orderIndex) -
-      ('order_index' in b ? b.order_index : (b as {orderIndex:number}).orderIndex)
-    );
-    const resultMapById = new Map(roundResults.map((r) => [r.roundId, r]));
-
     // Evenly-spaced line chart: one x-position per matchday / knockout stage
     const W = 520, H = 190, PL = 36, PR = 16, PT = 16, PB = 36;
     const cW = W - PL - PR;
@@ -1399,20 +1392,98 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
         <div className="wc-chart-legend">
           <span className="wc-chart-legend-item">
-            <span
-              className="wc-chart-legend-dot"
-              style={{ background: 'var(--accent)' }}
-            />
+            <span className="wc-chart-legend-dot" style={{ background: 'var(--accent)' }} />
             {myName}
           </span>
           <span className="wc-chart-legend-item">
-            <span
-              className="wc-chart-legend-dot"
-              style={{ background: oppColor }}
-            />
+            <span className="wc-chart-legend-dot" style={{ background: oppColor }} />
             {oppName}
           </span>
         </div>
+
+        {/* ── Goals tiebreaker chart ─────────────────────────────────── */}
+        {(() => {
+          let myGCum = 0, oppGCum = 0;
+          const goalsData: ChartPoint[] = [];
+
+          // Group Stage: goals from picked team per matchday
+          for (const [md, mdFix] of sortedMds) {
+            let myMd = 0, oppMd = 0;
+            for (const f of mdFix) {
+              if (f.status !== 'FINAL' || f.homeScore === null || f.awayScore === null) continue;
+              const myPick = pickMap[f.id] ?? f.myPickSide;
+              if (myPick) myMd += myPick === 'HOME' ? f.homeScore : f.awayScore;
+              if (f.opponentPickSide) oppMd += f.opponentPickSide === 'HOME' ? f.homeScore : f.awayScore;
+            }
+            myGCum += myMd; oppGCum += oppMd;
+            goalsData.push({ label: `MD${md}`, myCum: myGCum, oppCum: oppGCum, played: mdFix.some(f => f.status === 'FINAL') });
+          }
+
+          // Knockout stages: tiebreakGoals from roundResults
+          for (const stage of KNOCKOUT_ORDER) {
+            const result = resultMap.get(stage);
+            const myE  = result?.participants.find(p => p.participantId === myParticipantId);
+            const oppE = result?.participants.find(p => p.participantId !== myParticipantId);
+            if (result) { myGCum += myE?.tiebreakGoals ?? 0; oppGCum += oppE?.tiebreakGoals ?? 0; }
+            const inAll = allRounds.some(r => r.stage === stage);
+            if (inAll || result) goalsData.push({ label: STAGE_ABBR[stage] ?? stage, myCum: myGCum, oppCum: oppGCum, played: Boolean(result), isStage: true });
+          }
+
+          if (!goalsData.some(d => d.played)) return null;
+
+          const gn = goalsData.length;
+          const gStep = gn > 1 ? cW / (gn - 1) : cW;
+          const gToX = (i: number) => PL + i * gStep;
+          const gMax = Math.max(...goalsData.map(d => Math.max(d.myCum, d.oppCum)), 4) * 1.15;
+          const gToY = (v: number) => PT + cH - (v / gMax) * cH;
+          const gTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(gMax * f));
+          const gPlayed = goalsData.map((d, i) => ({ ...d, i })).filter(d => d.played);
+          const gMyPts  = gPlayed.map(d => `${gToX(d.i).toFixed(1)},${gToY(d.myCum).toFixed(1)}`).join(' ');
+          const gOppPts = gPlayed.map(d => `${gToX(d.i).toFixed(1)},${gToY(d.oppCum).toFixed(1)}`).join(' ');
+          const gKoIdx  = goalsData.findIndex(d => d.isStage);
+
+          return (
+            <>
+              <h3 className="wc-chart-heading" style={{ marginTop: 8 }}>Goals Scored by Picks</h3>
+              <div className="wc-chart-wrap">
+                <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }} aria-label="Cumulative goals scored by picks">
+                  {gTicks.map(v => (
+                    <g key={`gy-${v}`}>
+                      <line x1={PL} y1={gToY(v)} x2={W - PR} y2={gToY(v)} stroke="var(--line)" strokeWidth={v === 0 ? 1.5 : 0.8} />
+                      <text x={PL - 5} y={gToY(v) + 4} textAnchor="end" fontSize={9} fill="var(--text-2)">{v}</text>
+                    </g>
+                  ))}
+                  {gKoIdx > 0 && (
+                    <line x1={gToX(gKoIdx) - gStep / 2} y1={PT} x2={gToX(gKoIdx) - gStep / 2} y2={PT + cH}
+                      stroke="var(--line)" strokeWidth={1} strokeDasharray="4 3" />
+                  )}
+                  {goalsData.map((d, i) => (
+                    <text key={`gx-${i}`} x={gToX(i)} y={H - 6} textAnchor="middle" fontSize={8.5}
+                      fill={d.played ? 'var(--text-1)' : 'var(--text-2)'}>{d.label}</text>
+                  ))}
+                  {gOppPts && <polyline points={gOppPts} fill="none" stroke={oppColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" opacity={0.75} />}
+                  {gMyPts  && <polyline points={gMyPts}  fill="none" stroke={myColor}  strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />}
+                  {gPlayed.map(d => (
+                    <g key={`gd-${d.i}`}>
+                      <circle cx={gToX(d.i)} cy={gToY(d.myCum)}  r={3.5} fill={myColor} />
+                      <circle cx={gToX(d.i)} cy={gToY(d.oppCum)} r={3}   fill={oppColor} opacity={0.8} />
+                    </g>
+                  ))}
+                </svg>
+              </div>
+              <div className="wc-chart-legend">
+                <span className="wc-chart-legend-item">
+                  <span className="wc-chart-legend-dot" style={{ background: 'var(--accent)' }} />
+                  {myName}: {myGCum} goals
+                </span>
+                <span className="wc-chart-legend-item">
+                  <span className="wc-chart-legend-dot" style={{ background: oppColor }} />
+                  {oppName}: {oppGCum} goals
+                </span>
+              </div>
+            </>
+          );
+        })()}
 
         {/* Combined stakes + scores table */}
         {(() => {
@@ -2159,10 +2230,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                                   <div className="wc-scorebug-body">
                                     {/* Left pts — home side picker */}
                                     <div className="wc-scorebug-pts">
-                                      {isFinal && homePickExists && (
-                                        <span className={`wc-scorebug-pts-val${homePts && homePts > 0 ? ' wc-scorebug-pts-val--scored' : ''}`}>
-                                          {homePts && homePts > 0 ? `+${homePts}` : '0'}
-                                        </span>
+                                      {isFinal && homePickExists && homePts !== null && homePts > 0 && (
+                                        <span className="wc-scorebug-pts-val">+{homePts}</span>
                                       )}
                                     </div>
 
@@ -2223,10 +2292,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
                                     {/* Right pts — away side picker */}
                                     <div className="wc-scorebug-pts">
-                                      {isFinal && awayPickExists && (
-                                        <span className={`wc-scorebug-pts-val${awayPts && awayPts > 0 ? ' wc-scorebug-pts-val--scored' : ''}`}>
-                                          {awayPts && awayPts > 0 ? `+${awayPts}` : '0'}
-                                        </span>
+                                      {isFinal && awayPickExists && awayPts !== null && awayPts > 0 && (
+                                        <span className="wc-scorebug-pts-val">+{awayPts}</span>
                                       )}
                                     </div>
                                   </div>
@@ -2322,25 +2389,27 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               )}
             </button>
 
-            {(
-              [
-                { id: 'calendar', icon: '📅', label: 'Calendar' },
-                { id: 'tv',       icon: '📺', label: 'TV' },
-              ] as { id: DrawerTab; icon: string; label: string }[]
-            ).map(({ id, icon, label }) => (
-              <button
-                key={id}
-                className={`wc-drawer-icon-btn${drawerTab === id && drawerOpen ? ' wc-drawer-icon-btn--active' : ''}`}
-                title={label}
-                aria-label={label}
-                onClick={() => {
-                  if (drawerOpen && drawerTab === id) setDrawerOpen(false);
-                  else { setDrawerTab(id); setDrawerOpen(true); }
-                }}
-              >
-                {icon}
-              </button>
-            ))}
+            <button
+              className={`wc-drawer-icon-btn${drawerTab === 'calendar' && drawerOpen ? ' wc-drawer-icon-btn--active' : ''}`}
+              title="Calendar" aria-label="Calendar"
+              onClick={() => { if (drawerOpen && drawerTab === 'calendar') setDrawerOpen(false); else { setDrawerTab('calendar'); setDrawerOpen(true); } }}
+            >
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <rect x="2" y="3" width="16" height="15" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M2 8h16" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M6 2v2M14 2v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+            <button
+              className={`wc-drawer-icon-btn${drawerTab === 'tv' && drawerOpen ? ' wc-drawer-icon-btn--active' : ''}`}
+              title="TV" aria-label="TV"
+              onClick={() => { if (drawerOpen && drawerTab === 'tv') setDrawerOpen(false); else { setDrawerTab('tv'); setDrawerOpen(true); } }}
+            >
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <rect x="2" y="4" width="16" height="11" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M7 18h6M10 15v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
           </div>
 
           {/* Sliding content panel */}

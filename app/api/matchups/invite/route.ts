@@ -1,23 +1,15 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { resolveTournamentId, createMatchupWithInvite } from '@/lib/supabase/matchups';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { ensureAppUser } from '@/lib/supabase/user';
 
 const createInviteSchema = z.object({
   tournamentYear: z.number().int().min(1900).max(3000).optional()
 });
 
 export async function POST(request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: authError
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   const rawBody = await request.json().catch(() => ({}));
   const parsed = createInviteSchema.safeParse(rawBody);
@@ -30,7 +22,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    const appUser = await ensureAppUser(user);
     const tournamentId = await resolveTournamentId(parsed.data.tournamentYear);
     const matchup = await createMatchupWithInvite({
       tournamentId,

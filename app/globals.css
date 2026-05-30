@@ -2,6 +2,7 @@
 
 :root {
   color-scheme: light dark;
+  --separator: rgba(25, 53, 91, 0.22);
   --bg-0: #e9f4ff;
   --bg-1: #dceffd;
   --bg-grad: radial-gradient(circle at 10% 0%, #f8fbff 0%, rgba(248, 251, 255, 0.6) 40%, transparent 70%),
@@ -33,6 +34,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not(.theme-light) {
+    --separator: rgba(170, 201, 236, 0.30);
     --bg-0: #0a1422;
     --bg-1: #0e1d31;
     --bg-grad: radial-gradient(circle at 10% 0%, rgba(35, 78, 128, 0.28) 0%, transparent 45%),
@@ -72,6 +74,7 @@
 
 :root.theme-dark {
   color-scheme: dark;
+  --separator: rgba(170, 201, 236, 0.30);
   --bg-0: #0a1422;
   --bg-1: #0e1d31;
   --bg-grad: radial-gradient(circle at 10% 0%, rgba(35, 78, 128, 0.28) 0%, transparent 45%),
@@ -513,7 +516,7 @@ select {
   gap: 10px;
   padding: 0 14px;
   background: var(--glass-strong);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--separator);
   backdrop-filter: blur(18px);
   position: relative;
   z-index: 20;
@@ -560,12 +563,6 @@ select {
   color: var(--accent);
 }
 
-.wc-topbar-sep {
-  width: 1px;
-  height: 22px;
-  background: var(--line);
-  flex-shrink: 0;
-}
 
 .wc-topbar-spacer {
   flex: 1;
@@ -1049,7 +1046,7 @@ select {
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--separator);
   flex-shrink: 0;
 }
 
@@ -1248,37 +1245,6 @@ select {
   .wc-alerts-btn--urgent svg {
     animation: none;
   }
-}
-
-/* Unpicked picks trigger pill */
-.wc-unpicked-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--text-2);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-
-.wc-unpicked-btn:hover {
-  background: var(--glass-strong);
-  color: var(--text-0);
-}
-
-.wc-unpicked-btn--urgent {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.wc-unpicked-btn--urgent:hover {
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 /* Pick summary modal content */
@@ -1481,14 +1447,10 @@ select {
 }
 
 .wc-scorebug-pts-val {
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  color: var(--text-2);
-  line-height: 1;
-}
-
-.wc-scorebug-pts-val--scored {
   color: var(--ok);
+  line-height: 1;
 }
 
 .wc-scorebug-team {
@@ -1756,7 +1718,7 @@ select {
   align-items: center;
   justify-content: center;
   height: 44px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--separator);
   background: var(--glass);
   backdrop-filter: blur(12px);
 }
@@ -2541,7 +2503,7 @@ select {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--text-2);
+  color: var(--text-1);
 }
 
 /* Score modal — scorebug wrapper centers the pill */

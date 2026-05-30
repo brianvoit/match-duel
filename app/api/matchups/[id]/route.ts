@@ -1,7 +1,6 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { ensureAppUser } from '@/lib/supabase/user';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -10,13 +9,8 @@ interface RouteContext {
 export async function DELETE(_request: Request, context: RouteContext) {
   const { id: matchupId } = await context.params;
 
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const appUser = await ensureAppUser(user);
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   const service = createServiceRoleClient();
 
   const { data: matchup, error: fetchError } = await service

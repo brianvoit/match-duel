@@ -1,8 +1,7 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { ensureAppUser } from '@/lib/supabase/user';
 
 const patchSchema = z.object({
   displayName: z.string().trim().min(1).max(64).optional(),
@@ -12,18 +11,10 @@ const patchSchema = z.object({
 });
 
 export async function GET() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: authError
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const appUser = await ensureAppUser(user);
     const service = createServiceRoleClient();
     const { data: fullUser } = await service
       .from('app_user')
@@ -45,15 +36,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: authError
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = await request.json().catch(() => ({}));
@@ -65,8 +49,6 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const appUser = await ensureAppUser(user);
     const service = createServiceRoleClient();
 
     const updates: Record<string, string> = {};

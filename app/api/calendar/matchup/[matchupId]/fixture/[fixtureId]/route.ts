@@ -1,7 +1,6 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { ensureAppUser } from '@/lib/supabase/user';
 import { buildIcs, IcsFixture } from '@/lib/utils/ics';
 import { teamCode } from '@/lib/data/teamInfo';
 
@@ -10,15 +9,11 @@ interface RouteContext {
 }
 
 export async function GET(_req: NextRequest, context: RouteContext) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   const { matchupId, fixtureId } = await context.params;
   const service = createServiceRoleClient();
-  const appUser = await ensureAppUser(user);
 
   // Verify user is a participant in this matchup
   const { data: participant } = await service

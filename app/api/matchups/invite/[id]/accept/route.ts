@@ -1,6 +1,5 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { ensureAppUser } from '@/lib/supabase/user';
 import { acceptMatchupInvite } from '@/lib/supabase/matchups';
 
 interface RouteContext {
@@ -15,15 +14,10 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json({ ok: false, error: 'Invite id is required.' }, { status: 400 });
   }
 
-  const supabase = await createServerSupabaseClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-  }
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const appUser = await ensureAppUser(user);
     const result = await acceptMatchupInvite(inviteCode, appUser.id);
 
     if ('error' in result) {
