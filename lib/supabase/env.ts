@@ -27,4 +27,13 @@ export const serverEnv = {
   get BETA_CODE(): string | undefined {
     return process.env.BETA_CODE;
   },
+  get VAPID_PRIVATE_KEY(): string | undefined {
+    return process.env.VAPID_PRIVATE_KEY;
+  },
+  get VAPID_SUBJECT(): string {
+    return process.env.VAPID_SUBJECT ?? 'mailto:swimmer571@gmail.com';
+  },
+  get SUPABASE_FUNCTIONS_URL(): string | undefined {
+    return process.env.SUPABASE_FUNCTIONS_URL;
+  },
 };

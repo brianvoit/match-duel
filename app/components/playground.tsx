@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { TEAM_INFO, teamCode, teamFlag } from '@/lib/data/teamInfo';
+import { ChatPanel } from '@/app/components/chat-panel';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ type RoundResultEntry = {
 };
 
 type ContentTab = 'details' | 'squad' | 'recap';
-type DrawerTab = 'chat' | 'calendar' | 'tv' | 'alerts';
+type DrawerTab = 'chat' | 'calendar' | 'tv';
 type MobileView = 'feed' | 'content';
 type NoticeTone = 'ok' | 'error' | 'info';
 
@@ -116,7 +117,7 @@ function computePickPoints(
   if (fixture.status !== 'FINAL') return null;
   if (fixture.homeScore === null || fixture.awayScore === null) return null;
   if (!pickedSide) return 0;
-  if (fixture.homeScore === fixture.awayScore) return 1;
+  if (fixture.homeScore === fixture.awayScore) return 0;
   const winner = fixture.homeScore > fixture.awayScore ? 'HOME' : 'AWAY';
   return winner === pickedSide ? (STAGE_POINTS[stage] ?? 1) : 0;
 }
@@ -200,6 +201,13 @@ function initials(name: string | null | undefined, fallback = '?') {
   return str.charAt(0).toUpperCase();
 }
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
@@ -216,7 +224,9 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [tournamentMenuOpen, setTournamentMenuOpen] = useState(false);
   const tournamentMenuRef = useRef<HTMLDivElement>(null);
+  const hasAutoShownPickSummary = useRef(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [pickSummaryOpen, setPickSummaryOpen] = useState(false);
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
@@ -248,10 +258,20 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [myParticipantId, setMyParticipantId] = useState<string | null>(null);
   const [standing, setStanding] = useState<ParticipantStanding[]>([]);
   const [roundResults, setRoundResults] = useState<RoundResultEntry[]>([]);
+  const [myAppUserId, setMyAppUserId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [totalUnread, setTotalUnread] = useState(0);
+  const [opponentOnline, setOpponentOnline] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [defaultPickSide, setDefaultPickSide] = useState<'HOME' | 'AWAY'>('HOME');
   const [savingDefaultPick, setSavingDefaultPick] = useState(false);
+  const [theme, setTheme] = useState<'system' | 'light' | 'dark'>('system');
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const swRegistration = useRef<ServiceWorkerRegistration | null>(null);
   const [headToHead, setHeadToHead] = useState<{ year: number; stage: string; home: string; away: string; homeGoals: number | null; awayGoals: number | null }[]>([]);
   const [h2hHome, setH2hHome] = useState<string>('');
   const [h2hAway, setH2hAway] = useState<string>('');
@@ -324,6 +344,26 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     () => fixtures.find((f) => f.id === selectedFixtureId) ?? null,
     [fixtures, selectedFixtureId]
   );
+
+  const pickSummaryStats = useMemo(() => {
+    const hasPickOrder = Object.keys(pickOrder).length > 0;
+    const unpicked = fixtures.filter((f) => {
+      if (f.isLocked) return false;
+      if (pickMap[f.id] ?? f.myPickSide) return false;
+      return !hasPickOrder || pickOrder[f.id] === myParticipantId;
+    });
+    const now = Date.now();
+    const in24h = now + 24 * 60 * 60 * 1000;
+    const in3d = now + 3 * 24 * 60 * 60 * 1000;
+    let urgent = 0, soon = 0, later = 0;
+    for (const f of unpicked) {
+      const t = new Date(f.startsAt).getTime();
+      if (t <= in24h) urgent++;
+      else if (t <= in3d) soon++;
+      else later++;
+    }
+    return { total: unpicked.length, urgent, soon, later };
+  }, [fixtures, pickMap, pickOrder, myParticipantId]);
 
   // ── Notice ─────────────────────────────────────────────────────────────────
 
@@ -398,6 +438,21 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMatchupId]);
 
+  // Reset auto-show flag when active matchup changes so new matchup shows summary fresh
+  useEffect(() => {
+    hasAutoShownPickSummary.current = false;
+  }, [selectedMatchupId]);
+
+  // Auto-show pick summary once per matchup load when there are upcoming unpicked games
+  useEffect(() => {
+    if (loading) return;
+    if (!selectedMatchupId) return;
+    if (hasAutoShownPickSummary.current) return;
+    if (pickSummaryStats.total === 0) return;
+    hasAutoShownPickSummary.current = true;
+    setPickSummaryOpen(true);
+  }, [loading, selectedMatchupId, pickSummaryStats.total]);
+
   // 30s live polling
   useEffect(() => {
     if (contentTab !== 'details' || !selectedMatchupId || !hasLiveFixtures) return;
@@ -427,6 +482,53 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentTab, selectedMatchupId, hasLiveFixtures]);
 
+  // Apply persisted theme on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('wc-theme') as 'system' | 'light' | 'dark' | null;
+    if (saved === 'light' || saved === 'dark' || saved === 'system') {
+      setTheme(saved);
+      applyThemeClass(saved);
+    }
+  }, []);
+
+  // Register service worker and check existing push subscription
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    setPushSupported(true);
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      swRegistration.current = reg;
+      return reg.pushManager.getSubscription();
+    }).then((sub) => {
+      setPushEnabled(!!sub);
+    }).catch(() => {});
+  }, []);
+
+  // 30s activity ping
+  useEffect(() => {
+    const ping = () => fetch('/api/user/active', { method: 'PATCH' }).catch(() => {});
+    ping();
+    const id = setInterval(ping, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Load total unread count on mount
+  useEffect(() => {
+    fetch('/api/messages/unread-count', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setTotalUnread(d.total ?? 0); })
+      .catch(() => {});
+  }, []);
+
+  // Mark chat as read and reload unread count when chat drawer is opened
+  useEffect(() => {
+    if (drawerOpen && drawerTab === 'chat' && selectedMatchupId) {
+      fetch('/api/messages/unread-count', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => { if (d.ok) setTotalUnread(d.total ?? 0); })
+        .catch(() => {});
+    }
+  }, [drawerOpen, drawerTab, selectedMatchupId]);
+
   // ── Data fetchers ──────────────────────────────────────────────────────────
 
   async function loadProfile() {
@@ -434,7 +536,12 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     if (!res.ok) return;
     const payload = await res.json();
     if (payload.ok) {
-      setDisplayName(payload.displayName ?? '');
+      setMyAppUserId(payload.id ?? null);
+      const name = payload.displayName ?? '';
+      setDisplayName(name);
+      const parts = name.trim().split(/\s+/);
+      setFirstName(parts[0] ?? '');
+      setLastName(parts.slice(1).join(' '));
       setDefaultPickSide(payload.defaultPickSide ?? 'HOME');
     }
   }
@@ -643,11 +750,12 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   }
 
   async function saveDisplayName() {
+    const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
     setSavingName(true);
     const res = await fetch('/api/user/profile', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName })
+      body: JSON.stringify({ displayName: fullName })
     });
     const payload = await res.json();
     setSavingName(false);
@@ -655,7 +763,70 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       showNotice('error', payload.error ?? 'Failed to save display name.');
       return;
     }
-    showNotice('ok', 'Display name saved.');
+    setDisplayName(fullName);
+    showNotice('ok', 'Name saved.');
+  }
+
+  function applyThemeClass(t: 'system' | 'light' | 'dark') {
+    const root = document.documentElement;
+    root.classList.remove('theme-light', 'theme-dark');
+    if (t === 'light') root.classList.add('theme-light');
+    if (t === 'dark') root.classList.add('theme-dark');
+  }
+
+  function changeTheme(t: 'system' | 'light' | 'dark') {
+    setTheme(t);
+    applyThemeClass(t);
+    localStorage.setItem('wc-theme', t);
+  }
+
+  function handleNameBlur() {
+    const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
+    if (!fullName || fullName === displayName) return;
+    saveDisplayName();
+  }
+
+  async function togglePush() {
+    const reg = swRegistration.current;
+    if (!reg) return;
+    setPushLoading(true);
+    try {
+      if (pushEnabled) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await fetch('/api/notifications/webpush/subscribe', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          });
+          await sub.unsubscribe();
+        }
+        setPushEnabled(false);
+      } else {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          showNotice('error', 'Notification permission denied.');
+          return;
+        }
+        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
+        await fetch('/api/notifications/webpush/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: sub }),
+        });
+        setPushEnabled(true);
+        showNotice('ok', 'Push notifications enabled.');
+      }
+    } catch (err) {
+      showNotice('error', 'Failed to update push notifications.');
+      console.error(err);
+    } finally {
+      setPushLoading(false);
+    }
   }
 
   async function saveDefaultPickSide(side: 'HOME' | 'AWAY') {
@@ -1167,6 +1338,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
     return (
       <>
+        <h3 className="wc-chart-heading">Score by Matchday</h3>
         <div className="wc-chart-wrap">
           <svg
             viewBox={`0 0 ${W} ${H}`}
@@ -1231,81 +1403,235 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               className="wc-chart-legend-dot"
               style={{ background: 'var(--accent)' }}
             />
-            {myName}: {me?.tournamentPoints ?? 0} pts
+            {myName}
           </span>
           <span className="wc-chart-legend-item">
             <span
               className="wc-chart-legend-dot"
-              style={{ background: 'var(--text-2)' }}
+              style={{ background: oppColor }}
             />
-            {oppName}: {opp?.tournamentPoints ?? 0} pts
+            {oppName}
           </span>
         </div>
 
-        {/* Per-round table */}
-        {roundResults.length > 0 && (
-          <table className="wc-round-table" style={{ marginTop: 4 }}>
-            <thead>
-              <tr>
-                <th>Round</th>
-                <th style={{ textAlign: 'right' }}>{myName}</th>
-                <th style={{ textAlign: 'right' }}>{oppName}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roundResults
-                .slice()
-                .sort((a, b) => a.orderIndex - b.orderIndex)
-                .map((r) => {
-                  const myEntry = r.participants.find((p) => p.participantId === myParticipantId);
-                  const oppEntry = r.participants.find((p) => p.participantId !== myParticipantId);
-                  return (
-                    <tr key={r.roundId}>
-                      <td>{fmtStage(r.stage)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                        {myEntry?.points ?? 0}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {oppEntry?.points ?? 0}
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        )}
+        {/* Combined stakes + scores table */}
+        {(() => {
+          const STAGE_GAME_COUNTS: Record<string, number> = {
+            GROUP: 72, ROUND_OF_32: 16, ROUND_OF_16: 8,
+            QUARTERFINAL: 4, SEMIFINAL: 2, THIRD_PLACE: 1, FINAL: 1,
+          };
+          const settledStages = new Set(roundResults.map((r) => r.stage));
+          const resultByStage = new Map(roundResults.map((r) => [r.stage, r]));
+          const currentStage = currentRound?.stage;
+          const currentRemaining = fixtures.filter((f) => f.status !== 'FINAL').length;
+
+          const stakeRows = [...allRounds]
+            .sort((a, b) => ('order_index' in a ? a.order_index : 0) - ('order_index' in b ? b.order_index : 0))
+            .map((round) => {
+              const total = STAGE_GAME_COUNTS[round.stage] ?? 0;
+              const pts = STAGE_POINTS[round.stage] ?? 1;
+              const remaining = settledStages.has(round.stage) ? 0
+                : round.stage === currentStage ? currentRemaining
+                : total;
+              const result = resultByStage.get(round.stage);
+              const myEntry  = result?.participants.find((p) => p.participantId === myParticipantId);
+              const oppEntry = result?.participants.find((p) => p.participantId !== myParticipantId);
+              return {
+                label: fmtStage(round.stage),
+                total, remaining,
+                points: remaining * pts,
+                myPts:  result ? (myEntry?.points  ?? 0) : null,
+                oppPts: result ? (oppEntry?.points ?? 0) : null,
+              };
+            });
+
+          const totals = stakeRows.reduce(
+            (acc, r) => ({
+              total:    acc.total    + r.total,
+              remaining:acc.remaining+ r.remaining,
+              points:   acc.points   + r.points,
+              myPts:    acc.myPts    + (r.myPts  ?? 0),
+              oppPts:   acc.oppPts   + (r.oppPts ?? 0),
+            }),
+            { total: 0, remaining: 0, points: 0, myPts: 0, oppPts: 0 }
+          );
+
+          const avatarCell = (url: string | null | undefined, initial: string) => (
+            url
+              ? <img src={url} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover', display: 'block', margin: '0 auto' }} referrerPolicy="no-referrer" />
+              : <span style={{ display: 'block', textAlign: 'center', fontWeight: 700, fontSize: '0.75rem' }}>{initial}</span>
+          );
+
+          return (
+            <table className="wc-round-table wc-stakes-table">
+              <colgroup>
+                <col style={{ width: '30%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '14%' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Games</th>
+                  <th>Remaining</th>
+                  <th>Points</th>
+                  <th>{avatarCell(userAvatarUrl, (displayName || userEmail).charAt(0).toUpperCase())}</th>
+                  <th>{avatarCell(oppAvatarUrl, initials(selectedMatchup?.opponentDisplayName || selectedMatchup?.opponentEmail || 'O'))}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stakeRows.map((r) => (
+                  <tr key={r.label}>
+                    <td className="wc-stakes-stage">{r.label}</td>
+                    <td>{r.total}</td>
+                    <td>{r.remaining}</td>
+                    <td>{r.points}</td>
+                    <td>{r.myPts  !== null ? r.myPts  : '—'}</td>
+                    <td>{r.oppPts !== null ? r.oppPts : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td></td>
+                  <td><strong>{totals.total}</strong></td>
+                  <td><strong>{totals.remaining}</strong></td>
+                  <td><strong>{totals.points}</strong></td>
+                  <td><strong>{totals.myPts}</strong></td>
+                  <td><strong>{totals.oppPts}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          );
+        })()}
       </>
+    );
+  }
+
+  // ── Render: Pick summary (used in modal) ──────────────────────────────────
+
+  function renderPickSummary() {
+    const { total, urgent, soon, later } = pickSummaryStats;
+
+    if (total === 0) {
+      return (
+        <div className="wc-pick-summary-hero" style={{ paddingBottom: 8 }}>
+          <div style={{ fontSize: '1.8rem', textAlign: 'center' }}>✓</div>
+          <div className="wc-pick-summary-label" style={{ textAlign: 'center' }}>
+            You&apos;re all caught up — no picks to make right now.
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="wc-stack">
+        <div className="wc-pick-summary-hero">
+          <div className="wc-pick-summary-num">{total}</div>
+          <div className="wc-pick-summary-label">
+            {total === 1 ? 'pick to make' : 'picks to make'} this round
+          </div>
+        </div>
+
+        <div className="wc-pick-summary-rows">
+          {urgent > 0 && (
+            <div className="wc-pick-summary-row wc-pick-summary-row--urgent">
+              <span className="wc-pick-summary-dot wc-pick-summary-dot--urgent" />
+              <span className="wc-pick-summary-count">{urgent}</span>
+              <span className="wc-pick-summary-desc">
+                {urgent === 1 ? 'locks' : 'lock'} in the next 24 hours
+              </span>
+            </div>
+          )}
+          {soon > 0 && (
+            <div className="wc-pick-summary-row wc-pick-summary-row--soon">
+              <span className="wc-pick-summary-dot wc-pick-summary-dot--soon" />
+              <span className="wc-pick-summary-count">{soon}</span>
+              <span className="wc-pick-summary-desc">
+                {soon === 1 ? 'locks' : 'lock'} in 1–3 days
+              </span>
+            </div>
+          )}
+          {later > 0 && (
+            <div className="wc-pick-summary-row">
+              <span className="wc-pick-summary-dot" />
+              <span className="wc-pick-summary-count">{later}</span>
+              <span className="wc-pick-summary-desc">later this round</span>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <button
+            className="wc-btn wc-btn-primary"
+            type="button"
+            onClick={() => {
+              setPickSummaryOpen(false);
+              setFilterNoPick(true);
+            }}
+          >
+            Show unpicked →
+          </button>
+          <button
+            className="wc-btn"
+            type="button"
+            onClick={() => setPickSummaryOpen(false)}
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
     );
   }
 
   // ── Render: Profile (used in modal) ────────────────────────────────────────
 
   function renderProfile() {
+    const shownName = displayName || userEmail.split('@')[0];
     return (
       <div className="wc-stack">
-        <p className="wc-subtitle">
-          Signed in as <strong>{userEmail}</strong>
-        </p>
-        <label>
-          Display name
-          <div className="wc-inline-form" style={{ marginTop: 4 }}>
-            <input
-              className="wc-input"
-              value={displayName}
-              maxLength={64}
-              placeholder="How opponents see you"
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-            <button
-              className="wc-btn wc-btn-primary"
-              type="button"
-              disabled={savingName || !displayName.trim()}
-              onClick={saveDisplayName}
-            >
-              Save
-            </button>
+
+        {/* Avatar + identity */}
+        <div className="wc-profile-header">
+          <div className="wc-profile-avatar-wrap">
+            {userAvatarUrl
+              ? <img src={userAvatarUrl} alt="Profile" className="wc-profile-avatar-img" referrerPolicy="no-referrer" />
+              : <span className="wc-profile-avatar-init">{shownName.charAt(0).toUpperCase()}</span>
+            }
           </div>
-        </label>
+          <div className="wc-profile-identity">
+            <div className="wc-profile-identity-name">{shownName}</div>
+            <div className="wc-profile-identity-email">{userEmail}</div>
+            <div className="wc-profile-identity-hint">Tap photo to change</div>
+          </div>
+        </div>
+
+        {/* First / Last name fields */}
+        <div className="wc-name-row">
+          <div className="wc-floating-field">
+            <span className="wc-floating-label">First name</span>
+            <input
+              className="wc-floating-input"
+              value={firstName}
+              maxLength={32}
+              onChange={(e) => setFirstName(e.target.value)}
+              onBlur={handleNameBlur}
+            />
+          </div>
+          <div className="wc-floating-field">
+            <span className="wc-floating-label">Last name</span>
+            <input
+              className="wc-floating-input"
+              value={lastName}
+              maxLength={32}
+              onChange={(e) => setLastName(e.target.value)}
+              onBlur={handleNameBlur}
+            />
+          </div>
+        </div>
         <div className="wc-profile-setting">
           <div className="wc-profile-setting-label">Default pick if I miss kickoff</div>
           <div className="wc-profile-setting-hint">If you don&apos;t pick before a match starts, this team side is used automatically.</div>
@@ -1329,15 +1655,55 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           </div>
         </div>
 
+        {pushSupported && (
+          <div className="wc-profile-setting">
+            <div className="wc-profile-setting-label">Push notifications</div>
+            <div className="wc-profile-setting-hint">
+              Get alerted when your opponent picks or results are settled.
+            </div>
+            <div className="wc-toggle-group">
+              <button
+                className={`wc-toggle-btn${!pushEnabled ? ' wc-toggle-btn--active' : ''}`}
+                type="button"
+                disabled={pushLoading}
+                onClick={() => pushEnabled && togglePush()}
+              >
+                Off
+              </button>
+              <button
+                className={`wc-toggle-btn${pushEnabled ? ' wc-toggle-btn--active' : ''}`}
+                type="button"
+                disabled={pushLoading}
+                onClick={() => !pushEnabled && togglePush()}
+              >
+                On
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="wc-profile-setting">
+          <div className="wc-profile-setting-label">Theme</div>
+          <div className="wc-toggle-group">
+            {(['system', 'light', 'dark'] as const).map((t) => (
+              <button
+                key={t}
+                className={`wc-toggle-btn${theme === t ? ' wc-toggle-btn--active' : ''}`}
+                type="button"
+                onClick={() => changeTheme(t)}
+              >
+                {t === 'system' ? 'System' : t === 'light' ? 'Day' : 'Night'}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <ul className="wc-profile-list">
-          <li>Theme follows your system preference (light / dark).</li>
           <li>Reduced motion is respected automatically.</li>
         </ul>
-        <div className="wc-pill-row">
-          <button className="wc-btn" type="button" onClick={signOut}>
-            Sign Out
-          </button>
-        </div>
+        <button className="wc-signout-btn" type="button" onClick={signOut}>
+          Sign Out
+        </button>
       </div>
     );
   }
@@ -1430,11 +1796,14 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 {/* Away — opponent */}
                 <div className="wc-h2h-player wc-h2h-player--right">
                   <span className="wc-h2h-name">{oppName}</span>
-                  {selectedMatchup?.opponentAvatarUrl ? (
-                    <img className="wc-h2h-avatar" src={selectedMatchup.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
-                  ) : (
-                    <span className="wc-h2h-avatar wc-h2h-avatar--opp">{oppInit}</span>
-                  )}
+                  <div className="wc-avatar-presence-wrap">
+                    {selectedMatchup?.opponentAvatarUrl ? (
+                      <img className="wc-h2h-avatar" src={selectedMatchup.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
+                    ) : (
+                      <span className="wc-h2h-avatar wc-h2h-avatar--opp">{oppInit}</span>
+                    )}
+                    {opponentOnline && <span className="wc-presence-dot" />}
+                  </div>
                 </div>
               </button>
             );
@@ -1443,24 +1812,22 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
         {/* Global actions + user */}
         <div className="wc-topbar-right">
+          {/* Alerts bell */}
           <button
-            className="wc-btn wc-btn-sm wc-btn-primary"
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            disabled={loading}
+            className={`wc-alerts-btn${pickSummaryStats.urgent > 0 ? ' wc-alerts-btn--urgent' : pickSummaryStats.total > 0 ? ' wc-alerts-btn--active' : ''}`}
+            aria-label={pickSummaryStats.total > 0 ? `${pickSummaryStats.total} picks pending` : 'Alerts'}
+            title="Alerts"
+            onClick={() => setPickSummaryOpen(true)}
+            disabled={!selectedMatchupId}
           >
-            + Create
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M10 2a6 6 0 00-6 6c0 3.5-1.5 5-1.5 5h15s-1.5-1.5-1.5-5a6 6 0 00-6-6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
+              <path d="M8.5 17a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+            {pickSummaryStats.total > 0 && selectedMatchupId && (
+              <span className={`wc-alerts-badge${pickSummaryStats.urgent > 0 ? ' wc-alerts-badge--urgent' : ''}`} />
+            )}
           </button>
-          <button
-            className="wc-btn wc-btn-sm"
-            type="button"
-            onClick={() => setJoinOpen(true)}
-            disabled={loading}
-          >
-            Join
-          </button>
-
-          <div className="wc-topbar-sep" />
 
           {/* User avatar + dropdown */}
           <div className="wc-user-menu" ref={userMenuRef}>
@@ -1487,19 +1854,28 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
             {userMenuOpen && (
               <div className="wc-dropdown" role="menu">
-                <div className="wc-dropdown-header">
-                  <span className="wc-dropdown-email">{userEmail}</span>
-                </div>
+                <button
+                  className="wc-dropdown-item"
+                  role="menuitem"
+                  disabled={loading}
+                  onClick={() => { setUserMenuOpen(false); setCreateOpen(true); }}
+                >
+                  New Matchup
+                </button>
+                <button
+                  className="wc-dropdown-item"
+                  role="menuitem"
+                  disabled={loading}
+                  onClick={() => { setUserMenuOpen(false); setJoinOpen(true); }}
+                >
+                  Join Matchup
+                </button>
                 <div className="wc-dropdown-divider" />
                 <button
                   className="wc-dropdown-item"
                   role="menuitem"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    setProfileModalOpen(true);
-                  }}
+                  onClick={() => { setUserMenuOpen(false); setProfileModalOpen(true); }}
                 >
-                  <span className="wc-dropdown-item-icon">⚙</span>
                   Settings
                 </button>
                 <a
@@ -1508,7 +1884,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   href="/admin"
                   onClick={() => setUserMenuOpen(false)}
                 >
-                  <span className="wc-dropdown-item-icon">🛠</span>
                   Admin Tools
                 </a>
                 {selectedMatchupId && (
@@ -1521,7 +1896,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                       download="world-cup-pickem-2026.ics"
                       onClick={() => setUserMenuOpen(false)}
                     >
-                      <span className="wc-dropdown-item-icon">📅</span>
                       Download All Fixtures
                     </a>
                   </>
@@ -1532,7 +1906,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   role="menuitem"
                   onClick={() => { setUserMenuOpen(false); signOut(); }}
                 >
-                  <span className="wc-dropdown-item-icon">→</span>
                   Sign Out
                 </button>
               </div>
@@ -1930,12 +2303,29 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         >
           {/* Icon strip — always visible */}
           <div className="wc-drawer-icons">
+            {/* Chat — monochrome SVG with unread badge */}
+            <button
+              className={`wc-drawer-icon-btn${drawerTab === 'chat' && drawerOpen ? ' wc-drawer-icon-btn--active' : ''}`}
+              style={{ position: 'relative' }}
+              title="Chat"
+              aria-label="Chat"
+              onClick={() => {
+                if (drawerOpen && drawerTab === 'chat') setDrawerOpen(false);
+                else { setDrawerTab('chat'); setDrawerOpen(true); }
+              }}
+            >
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M2 4a2 2 0 012-2h12a2 2 0 012 2v9a2 2 0 01-2 2H6.5L2 18V4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+              </svg>
+              {totalUnread > 0 && (
+                <span className="wc-chat-badge">{totalUnread > 99 ? '99+' : totalUnread}</span>
+              )}
+            </button>
+
             {(
               [
-                { id: 'chat',     icon: '💬', label: 'Chat' },
                 { id: 'calendar', icon: '📅', label: 'Calendar' },
                 { id: 'tv',       icon: '📺', label: 'TV' },
-                { id: 'alerts',   icon: '🔔', label: 'Alerts' },
               ] as { id: DrawerTab; icon: string; label: string }[]
             ).map(({ id, icon, label }) => (
               <button
@@ -1944,12 +2334,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 title={label}
                 aria-label={label}
                 onClick={() => {
-                  if (drawerOpen && drawerTab === id) {
-                    setDrawerOpen(false); // toggle closed
-                  } else {
-                    setDrawerTab(id);
-                    setDrawerOpen(true);
-                  }
+                  if (drawerOpen && drawerTab === id) setDrawerOpen(false);
+                  else { setDrawerTab(id); setDrawerOpen(true); }
                 }}
               >
                 {icon}
@@ -1961,7 +2347,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           <div className="wc-drawer-panel">
             <div className="wc-drawer-panel-header">
               <span className="wc-drawer-panel-title">
-                {{ chat: 'Chat', calendar: 'Calendar', tv: 'TV Schedule', alerts: 'Alerts' }[drawerTab]}
+                {{ chat: 'Chat', calendar: 'Calendar', tv: 'TV Schedule' }[drawerTab]}
               </span>
               <button
                 className="wc-topbar-icon-btn"
@@ -1972,14 +2358,29 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 ✕
               </button>
             </div>
-            <div className="wc-drawer-panel-body">
+            <div className={`wc-drawer-panel-body${drawerTab === 'chat' ? ' wc-drawer-panel-body--chat' : ''}`}>
               {drawerTab === 'chat' && (
-                <div className="wc-content-empty">
-                  <p style={{ fontSize: '1.5rem' }}>💬</p>
-                  <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
-                    Chat &amp; trashtalk — coming soon
-                  </p>
-                </div>
+                selectedMatchupId && myAppUserId && selectedMatchup?.opponentEmail ? (
+                  <ChatPanel
+                    matchupId={selectedMatchupId}
+                    myAppUserId={myAppUserId}
+                    myAvatarUrl={userAvatarUrl ?? null}
+                    opponentDisplayName={selectedMatchup.opponentDisplayName ?? null}
+                    opponentEmail={selectedMatchup.opponentEmail}
+                    opponentAvatarUrl={selectedMatchup.opponentAvatarUrl ?? null}
+                    onMarkRead={() => {
+                      fetch('/api/messages/unread-count', { cache: 'no-store' })
+                        .then(r => r.json()).then(d => { if (d.ok) setTotalUnread(d.total ?? 0); }).catch(() => {});
+                    }}
+                    onPresenceChange={(online) => setOpponentOnline(online)}
+                  />
+                ) : (
+                  <div className="wc-content-empty">
+                    <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
+                      {!selectedMatchupId ? 'Select a matchup to open chat.' : 'Chat available once your opponent joins.'}
+                    </p>
+                  </div>
+                )
               )}
               {drawerTab === 'calendar' && (
                 <div className="wc-cal-panel">
@@ -2037,14 +2438,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   </p>
                 </div>
               )}
-              {drawerTab === 'alerts' && (
-                <div className="wc-content-empty">
-                  <p style={{ fontSize: '1.5rem' }}>🔔</p>
-                  <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
-                    Match notifications — coming soon
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         </aside>
@@ -2081,17 +2474,78 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           onClick={(e) => { if (e.target === e.currentTarget) setScoreChartOpen(false); }}
         >
           <div className="wc-modal wc-modal--wide">
-            <div className="wc-modal-header">
-              <h3 style={{ margin: 0, fontSize: '1rem' }}>Score by Matchday</h3>
+            <button
+              className="wc-topbar-icon-btn"
+              aria-label="Close"
+              onClick={() => setScoreChartOpen(false)}
+              style={{ position: 'absolute', top: 12, right: 12 }}
+            >
+              ✕
+            </button>
+
+            {/* H2H scorebug — reuses topbar pill style */}
+            {(() => {
+              const me  = standing.find((s) => s.participantId === myParticipantId);
+              const opp = standing.find((s) => s.participantId !== myParticipantId);
+              const myPts  = me?.tournamentPoints  ?? 0;
+              const oppPts = opp?.tournamentPoints ?? 0;
+              const myName  = displayName || userEmail.split('@')[0];
+              const myInit  = initials(myName);
+              const oppName = selectedMatchup.opponentDisplayName ?? selectedMatchup.opponentEmail?.split('@')[0] ?? 'Opp';
+              const oppInit = initials(oppName);
+              return (
+                <div className="wc-chart-scorebug-wrap">
+                  <div className="wc-h2h">
+                    <div className="wc-h2h-player">
+                      <span className="wc-h2h-name">{myName}</span>
+                      {userAvatarUrl
+                        ? <img className="wc-h2h-avatar" src={userAvatarUrl} alt={myName} referrerPolicy="no-referrer" />
+                        : <span className="wc-h2h-avatar wc-h2h-avatar--me">{myInit}</span>
+                      }
+                    </div>
+                    <div className="wc-h2h-score">
+                      <span className={myPts > oppPts ? 'wc-h2h-pts--leading' : myPts < oppPts ? 'wc-h2h-pts--trailing' : ''}>{myPts}</span>
+                      <span className="wc-h2h-sep">–</span>
+                      <span className={oppPts > myPts ? 'wc-h2h-pts--leading' : oppPts < myPts ? 'wc-h2h-pts--trailing' : ''}>{oppPts}</span>
+                    </div>
+                    <div className="wc-h2h-player wc-h2h-player--right">
+                      <span className="wc-h2h-name">{oppName}</span>
+                      {oppAvatarUrl
+                        ? <img className="wc-h2h-avatar" src={oppAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
+                        : <span className="wc-h2h-avatar wc-h2h-avatar--opp">{oppInit}</span>
+                      }
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {renderScoreChart()}
+          </div>
+        </div>
+      )}
+
+      {/* Pick summary modal */}
+      {pickSummaryOpen && selectedMatchupId && (
+        <div
+          className="wc-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pick summary"
+          onClick={(e) => { if (e.target === e.currentTarget) setPickSummaryOpen(false); }}
+        >
+          <div className="wc-modal">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}>Your Picks</h3>
               <button
                 className="wc-topbar-icon-btn"
                 aria-label="Close"
-                onClick={() => setScoreChartOpen(false)}
+                onClick={() => setPickSummaryOpen(false)}
               >
                 ✕
               </button>
             </div>
-            {renderScoreChart()}
+            {renderPickSummary()}
           </div>
         </div>
       )}

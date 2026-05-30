@@ -10,7 +10,7 @@ export const WORLD_CUP_2026_SCORING: ScoringConfig = {
     THIRD_PLACE: 16,
     FINAL: 32
   },
-  drawPoint: 1
+  drawPoint: 0
 };
 
 export function stagePointsFor(stage: StageName, scoringConfig = WORLD_CUP_2026_SCORING): number {
@@ -25,7 +25,7 @@ export function evaluatePick(input: PickEvaluationInput): number {
   }
 
   if (fixture.homeGoals === fixture.awayGoals) {
-    return Math.max(1, Math.floor(stagePointsFor(stage, scoringConfig) / 2));
+    return scoringConfig.drawPoint ?? 0;
   }
 
   const winnerSide = fixture.homeGoals > fixture.awayGoals ? 'HOME' : 'AWAY';

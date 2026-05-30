@@ -13,7 +13,7 @@ const stages: StageName[] = [
 ];
 
 describe('evaluatePick', () => {
-  it('returns draw consolation of 1 for GROUP stage draw', () => {
+  it('returns 0 points for a draw (ties award 0)', () => {
     const points = evaluatePick({
       stage: 'GROUP',
       pickedTeamSide: 'HOME',
@@ -21,28 +21,18 @@ describe('evaluatePick', () => {
       scoringConfig: WORLD_CUP_2026_SCORING
     });
 
-    expect(points).toBe(1); // max(1, floor(1/2)) = max(1, 0) = 1
+    expect(points).toBe(0);
   });
 
-  it('returns correct draw consolation for each stage', () => {
-    const cases: Array<[StageName, number]> = [
-      ['GROUP', 1],       // floor(1/2)=0 → max(1,0)=1
-      ['ROUND_OF_32', 1], // floor(2/2)=1 → max(1,1)=1
-      ['ROUND_OF_16', 2], // floor(4/2)=2
-      ['QUARTERFINAL', 4],// floor(8/2)=4
-      ['SEMIFINAL', 4],   // floor(8/2)=4
-      ['THIRD_PLACE', 8], // floor(16/2)=8
-      ['FINAL', 16]       // floor(32/2)=16
-    ];
-
-    for (const [stage, expected] of cases) {
+  it('returns 0 for draws at every stage', () => {
+    for (const stage of stages) {
       const points = evaluatePick({
         stage,
         pickedTeamSide: 'HOME',
         fixture: { homeGoals: 0, awayGoals: 0, status: 'FINAL' },
         scoringConfig: WORLD_CUP_2026_SCORING
       });
-      expect(points, `draw consolation for ${stage}`).toBe(expected);
+      expect(points, `draw should be 0 for ${stage}`).toBe(0);
     }
   });
 

@@ -67,20 +67,24 @@ export async function initializeFirstRoundPickOrder(input: {
     return;
   }
 
-  // Joiner picks first for fixture 0, alternates from there
+  // Joiner picks first for fixture 0 (stand-in for "loser of previous World Cup")
   const assignments = assignAlternatingFirstPicker({
     previousStageStandings: [
       {
         participantId: input.joinerParticipantId,
         stagePoints: 0,
         stageTiebreakGoals: 0,
-        tournamentPoints: 0
+        totalGoalsTiebreak: 0,
+        tournamentPoints: 0,
+        pickedSecondPreviously: false
       },
       {
         participantId: input.creatorParticipantId,
         stagePoints: 1, // creator has higher points so joiner wins the sort (loser picks first)
         stageTiebreakGoals: 0,
-        tournamentPoints: 1
+        totalGoalsTiebreak: 0,
+        tournamentPoints: 1,
+        pickedSecondPreviously: false
       }
     ],
     fixtureIdsChronological: fixtures.map((f) => f.id)

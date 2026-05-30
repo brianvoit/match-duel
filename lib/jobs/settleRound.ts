@@ -277,6 +277,18 @@ async function assignPickOrderForNextRound(
     return;
   }
 
+  // Determine who picked second in the completed round (first fixture's second picker)
+  const { data: lastRoundPickOrder } = await service
+    .from('pick_order_assignment')
+    .select('first_picker_participant_id')
+    .eq('matchup_id', matchupId)
+    .eq('round_id', completedRound.id)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle() as { data: { first_picker_participant_id: string } | null };
+
+  const firstPickerLastRound = lastRoundPickOrder?.first_picker_participant_id ?? null;
+
   const standingMap = new Map(currentStandings.map((s) => [s.participant_id, s]));
   const lastRoundMap = new Map(lastRoundResults.map((r) => [r.participant_id, r]));
 
@@ -297,13 +309,17 @@ async function assignPickOrderForNextRound(
         participantId: pA,
         stagePoints: lastA.points,
         stageTiebreakGoals: lastA.tiebreak_goals,
-        tournamentPoints: standingA.tournament_points
+        totalGoalsTiebreak: standingA.total_goals_tiebreak,
+        tournamentPoints: standingA.tournament_points,
+        pickedSecondPreviously: firstPickerLastRound !== null && firstPickerLastRound !== pA
       },
       {
         participantId: pB,
         stagePoints: lastB.points,
         stageTiebreakGoals: lastB.tiebreak_goals,
-        tournamentPoints: standingB.tournament_points
+        totalGoalsTiebreak: standingB.total_goals_tiebreak,
+        tournamentPoints: standingB.tournament_points,
+        pickedSecondPreviously: firstPickerLastRound !== null && firstPickerLastRound !== pB
       }
     ],
     fixtureIdsChronological: nextFixtures.map((f) => f.id)

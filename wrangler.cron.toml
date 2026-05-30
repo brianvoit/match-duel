@@ -1,0 +1,13 @@
+name = "match-duel-cron"
+main = "src/cron.ts"
+compatibility_date = "2026-05-22"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[triggers]
+crons = ["*/30 * * * *"]
+
+[vars]
+SUPABASE_FUNCTIONS_URL = "https://fqievqqzxrgvqrgknvas.supabase.co/functions/v1"
+# Set SUPABASE_SERVICE_ROLE_KEY as a secret:
+#   wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config wrangler.cron.toml

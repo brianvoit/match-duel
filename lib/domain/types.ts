@@ -30,6 +30,8 @@ export interface PickEvaluationInput {
 export interface StageStandingInput {
   participantId: string;
   stagePoints: number;
-  stageTiebreakGoals: number;
-  tournamentPoints: number;
+  stageTiebreakGoals: number;  // goals from picked teams in this stage (round tiebreaker)
+  totalGoalsTiebreak: number;  // cumulative goals from picked teams across all stages
+  tournamentPoints: number;    // cumulative tournament points
+  pickedSecondPreviously: boolean; // true if this player was 2nd picker last stage (final fallback)
 }

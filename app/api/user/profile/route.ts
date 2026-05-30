@@ -33,6 +33,7 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
+      id: appUser.id,
       email: appUser.email,
       displayName: appUser.display_name,
       defaultPickSide: fullUser?.default_pick_side ?? 'HOME'

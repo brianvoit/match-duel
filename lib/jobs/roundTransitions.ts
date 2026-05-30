@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { runRoundSettlement } from '@/lib/jobs/settleRound';
+import { createNotificationEvents } from '@/lib/notifications';
 
 interface RoundRow {
   id: string;
@@ -86,6 +87,9 @@ export async function runRoundTransitions(input?: {
 
     await applyMissedPickDefaults(service, round.id);
     await runRoundSettlement({ roundId: round.id });
+
+    // Notify all matchup participants that results are in — fire-and-forget
+    notifyResultsSettled(service, round.id, round.tournament_id, round.stage).catch(() => {});
   }
 
   return {
@@ -200,4 +204,41 @@ async function applyMissedPickDefaults(
       .from('pick')
       .upsert(rowsToInsert, { onConflict: 'fixture_id,participant_id' });
   }
+}
+
+async function notifyResultsSettled(
+  service: ReturnType<typeof createServiceRoleClient>,
+  roundId: string,
+  tournamentId: string,
+  stage: string
+) {
+  const { data: participants } = await service
+    .from('matchup_participant')
+    .select('user_id, matchup:matchup_id(tournament_id)')
+    .eq('matchup.tournament_id', tournamentId) as {
+    data: Array<{ user_id: string; matchup: { tournament_id: string } | null }> | null;
+  };
+
+  const userIds = [...new Set(
+    (participants ?? [])
+      .filter((p) => p.matchup !== null)
+      .map((p) => p.user_id)
+  )];
+
+  if (!userIds.length) return;
+
+  const stageLabel = stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+  await createNotificationEvents(
+    userIds.map((userId) => ({
+      userId,
+      eventType: 'RESULTS_SETTLED' as const,
+      payload: {
+        title: 'Results are in!',
+        body: `${stageLabel} results are settled — open the app to see your score.`,
+        url: '/play',
+        tag: `results-settled-${roundId}`,
+      },
+    }))
+  );
 }
