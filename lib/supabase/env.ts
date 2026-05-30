@@ -36,4 +36,12 @@ export const serverEnv = {
   get SUPABASE_FUNCTIONS_URL(): string | undefined {
     return process.env.SUPABASE_FUNCTIONS_URL;
   },
+  get API_FOOTBALL_KEY(): string | undefined {
+    return process.env.API_FOOTBALL_KEY;
+  },
+  /** Season year used for API-Football queries. Set to 2022 locally to test
+   *  on the free plan; set to 2026 in production once the plan is upgraded. */
+  get API_FOOTBALL_SEASON(): number {
+    return parseInt(process.env.API_FOOTBALL_SEASON ?? '2026', 10);
+  },
 };

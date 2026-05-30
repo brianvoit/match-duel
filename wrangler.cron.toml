@@ -9,5 +9,11 @@ crons = ["*/30 * * * *"]
 
 [vars]
 SUPABASE_FUNCTIONS_URL = "https://fqievqqzxrgvqrgknvas.supabase.co/functions/v1"
-# Set SUPABASE_SERVICE_ROLE_KEY as a secret:
-#   wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config wrangler.cron.toml
+APP_URL = "https://match-duel.com"
+
+# Secrets — set each with:
+#   wrangler secret put <NAME> --config wrangler.cron.toml
+#
+# Required:
+#   SUPABASE_SERVICE_ROLE_KEY   (Supabase service role key)
+#   JOB_ADMIN_TOKEN             (must match JOB_ADMIN_TOKEN in Cloudflare Pages/Workers env)

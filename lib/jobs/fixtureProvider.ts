@@ -18,7 +18,7 @@ export const providerFixtureSchema = z.object({
 export type ProviderFixture = z.infer<typeof providerFixtureSchema>;
 
 export const fixtureSyncPayloadSchema = z.object({
-  provider: z.enum(['MANUAL']).default('MANUAL'),
+  provider: z.enum(['MANUAL', 'API_FOOTBALL']).default('MANUAL'),
   dryRun: z.boolean().default(false),
   fixtures: z.array(providerFixtureSchema).min(1)
 });
