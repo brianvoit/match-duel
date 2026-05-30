@@ -4,81 +4,20 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { createClient } from '@/lib/supabase/client';
 import { TEAM_INFO, teamCode, teamFlag } from '@/lib/data/teamInfo';
 import { ChatPanel } from '@/app/components/chat-panel';
+import { ScoreChartModal } from '@/app/components/score-chart-modal';
+import { ProfileSettings } from '@/app/components/profile-settings';
+import { PickSummaryContent } from '@/app/components/pick-summary-content';
+import {
+  Tournament, Matchup, Round, Fixture,
+  ParticipantStanding, RoundResultParticipant, RoundResultEntry,
+  ContentTab, DrawerTab, MobileView, NoticeTone,
+} from '@/app/components/playground-types';
+import {
+  STAGE_POINTS, STAGE_LABELS, fmtStage, computePickPoints,
+  computeMatchdays, initials, urlBase64ToUint8Array, StatusGlyph,
+} from '@/app/components/playground-utils';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type Tournament = {
-  id: string;
-  label: string; // e.g. "FIFA World Cup '26"
-};
-
-type Matchup = {
-  matchupId: string;
-  inviteCode: string;
-  status: string;
-  tournamentId: string;
-  createdAt: string;
-  joinedAt: string;
-  isCreator: boolean;
-  opponentDisplayName: string | null;
-  opponentEmail: string | null;
-  opponentAvatarUrl: string | null;
-};
-
-type Round = {
-  id: string;
-  stage: string;
-  order_index: number;
-  is_complete: boolean;
-  starts_at?: string | null;
-  ends_at?: string | null;
-};
-
-type Fixture = {
-  id: string;
-  startsAt: string;
-  homeTeam: string;
-  awayTeam: string;
-  homeScore: number | null;
-  awayScore: number | null;
-  status: string;
-  isLocked: boolean;
-  myPickSide: 'HOME' | 'AWAY' | null;
-  opponentPickSide: 'HOME' | 'AWAY' | null;
-  groupName: string | null;
-  venue: string | null;
-  city: string | null;
-  matchday: number | null;
-};
-
-type ParticipantStanding = {
-  participantId: string;
-  appUserId: string;
-  displayName: string | null;
-  email: string;
-  tournamentPoints: number;
-  totalGoalsTiebreak: number;
-};
-
-type RoundResultParticipant = {
-  participantId: string;
-  displayName: string | null;
-  email: string;
-  points: number;
-  tiebreakGoals: number;
-};
-
-type RoundResultEntry = {
-  roundId: string;
-  stage: string;
-  orderIndex: number;
-  participants: RoundResultParticipant[];
-};
-
-type ContentTab = 'details' | 'squad' | 'recap';
-type DrawerTab = 'chat' | 'calendar' | 'tv';
-type MobileView = 'feed' | 'content';
-type NoticeTone = 'ok' | 'error' | 'info';
+// Types are imported from playground-types.ts
 
 interface PlaygroundProps {
   userEmail: string;
@@ -98,115 +37,7 @@ const TOURNAMENT_CATALOGUE = [
   { id: 'wc-womens-2015', label: "Women's World Cup '15", active: false },
 ];
 
-// Stage points mirror WORLD_CUP_2026_SCORING (client-side outcome display only)
-const STAGE_POINTS: Record<string, number> = {
-  GROUP: 1,
-  ROUND_OF_32: 2,
-  ROUND_OF_16: 4,
-  QUARTERFINAL: 8,
-  SEMIFINAL: 8,
-  THIRD_PLACE: 16,
-  FINAL: 32
-};
-
-function computePickPoints(
-  fixture: Fixture,
-  pickedSide: 'HOME' | 'AWAY' | null,
-  stage: string
-): number | null {
-  if (fixture.status !== 'FINAL') return null;
-  if (fixture.homeScore === null || fixture.awayScore === null) return null;
-  if (!pickedSide) return 0;
-  if (fixture.homeScore === fixture.awayScore) return 0;
-  const winner = fixture.homeScore > fixture.awayScore ? 'HOME' : 'AWAY';
-  return winner === pickedSide ? (STAGE_POINTS[stage] ?? 1) : 0;
-}
-
-/** Groups fixtures into matchday buckets: a new matchday starts when there's
- *  a gap of more than 2 days between consecutive fixture kick-offs. */
-function computeMatchdays(fixtures: { id: string; startsAt: string }[]): Map<string, number> {
-  const map = new Map<string, number>();
-  if (!fixtures.length) return map;
-  let matchday = 0;
-  let lastDay = '';
-  for (const f of fixtures) {
-    // Use UTC date string so kickoff times stored as UTC don't bleed into adjacent days
-    const day = new Date(f.startsAt).toISOString().slice(0, 10); // "2026-06-11"
-    if (day !== lastDay) { matchday++; lastDay = day; }
-    map.set(f.id, matchday);
-  }
-  return map;
-}
-
-const STAGE_LABELS: Record<string, string> = {
-  GROUP:       'Group Stage',
-  ROUND_OF_32: 'Round of 32',
-  ROUND_OF_16: 'Round of 16',
-  QUARTERFINAL:'Quarter-Finals',
-  SEMIFINAL:   'Semi-Finals',
-  THIRD_PLACE: 'Third Place',
-  FINAL:       'Final',
-};
-
-function fmtStage(stage: string) {
-  return STAGE_LABELS[stage] ?? stage.replace(/_/g, ' ');
-}
-
-function StatusGlyph({ status, isLocked, size = 13 }: { status: string; isLocked: boolean; size?: number }) {
-  if (status === 'LIVE') {
-    return (
-      <span className="wc-status-glyph wc-status-glyph--live" aria-label="Live">
-        <span className="wc-status-dot" />
-        Live
-      </span>
-    );
-  }
-  if (status === 'FINAL') {
-    return <span className="wc-status-glyph wc-status-glyph--final" aria-label="Final">Final</span>;
-  }
-  if (status === 'POSTPONED' || status === 'CANCELED') {
-    return (
-      <span className="wc-status-glyph wc-status-glyph--canceled" aria-label={status}>
-        <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
-          <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
-      </span>
-    );
-  }
-  if (isLocked) {
-    // Closed — symmetric U-shackle, both arms fully seated into body
-    return (
-      <span className="wc-status-glyph wc-status-glyph--locked" aria-label="Locked">
-        <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
-          <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-          <path d="M3.5 6V4A3.5 3.5 0 0110.5 4V6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-        </svg>
-      </span>
-    );
-  }
-  // Open — body sits left, shackle rises from right side of body, arcs right, free arm hangs without connecting
-  return (
-    <span className="wc-status-glyph wc-status-glyph--open" aria-label="Open">
-      <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden="true">
-        <rect x="1" y="7" width="7.5" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-        <path d="M7 7V4A3 3 0 0113 4V6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      </svg>
-    </span>
-  );
-}
-
-function initials(name: string | null | undefined, fallback = '?') {
-  const str = name?.trim();
-  if (!str) return fallback;
-  return str.charAt(0).toUpperCase();
-}
-
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = atob(base64);
-  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
-}
+// Utilities imported from playground-utils.tsx
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -1224,560 +1055,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     );
   }
 
-  // ── Render: Score chart (H2H scorebug modal) ───────────────────────────────
 
-  function renderScoreChart() {
-    const me = standing.find((s) => s.participantId === myParticipantId);
-    const opp = standing.find((s) => s.participantId !== myParticipantId);
-    const myName = 'You';
-    const oppName =
-      selectedMatchup?.opponentDisplayName ??
-      selectedMatchup?.opponentEmail?.split('@')[0] ??
-      'Opponent';
 
-    // Use allRounds for full X axis; fill from roundResults
-    const rounds = allRounds.length
-      ? allRounds
-      : roundResults.map((r) => ({
-          id: r.roundId,
-          stage: r.stage,
-          orderIndex: r.orderIndex,
-          is_complete: true,
-          starts_at: null,
-          ends_at: null,
-          tournament_id: ''
-        }));
-
-    if (!rounds.length) {
-      return (
-        <div style={{ textAlign: 'center', padding: '24px 0' }}>
-          <p className="wc-subtitle">No matchday data yet. Scores will appear once rounds are scored.</p>
-        </div>
-      );
-    }
-
-    // ── Build chart data: per-matchday for Group Stage, per-stage for knockouts ──
-
-    const STAGE_ABBR: Record<string, string> = {
-      GROUP: 'GS', ROUND_OF_32: 'Ro32', ROUND_OF_16: 'Ro16',
-      QUARTERFINAL: 'QF', SEMIFINAL: 'SF', THIRD_PLACE: '3P', FINAL: 'F',
-    };
-    const KNOCKOUT_ORDER = ['ROUND_OF_32','ROUND_OF_16','QUARTERFINAL','SEMIFINAL','THIRD_PLACE','FINAL'];
-
-    type ChartPoint = { label: string; myCum: number; oppCum: number; played: boolean; isStage?: boolean };
-
-    let myCum = 0, oppCum = 0;
-    const chartData: ChartPoint[] = [];
-
-    // Group Stage: compute per-matchday cumulative using fixture.matchday field
-    const mdGroups = new Map<number, Fixture[]>();
-    for (const f of fixtures) {
-      const md = f.matchday ?? 1;
-      if (!mdGroups.has(md)) mdGroups.set(md, []);
-      mdGroups.get(md)!.push(f);
-    }
-    const sortedMds = [...mdGroups.entries()].sort(([a], [b]) => a - b);
-    for (const [md, mdFix] of sortedMds) {
-      let myMd = 0, oppMd = 0;
-      for (const f of mdFix) {
-        const myPick = pickMap[f.id] ?? f.myPickSide;
-        myMd  += computePickPoints(f, myPick,          currentRound?.stage ?? 'GROUP') ?? 0;
-        oppMd += computePickPoints(f, f.opponentPickSide, currentRound?.stage ?? 'GROUP') ?? 0;
-      }
-      myCum  += myMd;
-      oppCum += oppMd;
-      const anyFinal = mdFix.some((f) => f.status === 'FINAL');
-      chartData.push({ label: `MD${md}`, myCum, oppCum, played: anyFinal });
-    }
-
-    // Knockout stages from roundResults + future placeholders from allRounds
-    const resultMap = new Map(roundResults.map((r) => [r.stage, r]));
-    for (const stage of KNOCKOUT_ORDER) {
-      const result = resultMap.get(stage);
-      const myEntry  = result?.participants.find((p) => p.participantId === myParticipantId);
-      const oppEntry = result?.participants.find((p) => p.participantId !== myParticipantId);
-      if (result) {
-        myCum  += myEntry?.points  ?? 0;
-        oppCum += oppEntry?.points ?? 0;
-      }
-      const inAllRounds = allRounds.some((r) => r.stage === stage);
-      if (inAllRounds || result) {
-        chartData.push({ label: STAGE_ABBR[stage] ?? stage, myCum, oppCum, played: Boolean(result), isStage: true });
-      }
-    }
-
-    // Evenly-spaced line chart: one x-position per matchday / knockout stage
-    const W = 520, H = 190, PL = 36, PR = 16, PT = 16, PB = 36;
-    const cW = W - PL - PR;
-    const cH = H - PT - PB;
-    const n = chartData.length;
-    const step = n > 1 ? cW / (n - 1) : cW;
-
-    const toX = (i: number) => PL + i * step;
-    const maxVal = Math.max(...chartData.map((d) => Math.max(d.myCum, d.oppCum)), 8) * 1.12;
-    const toY = (v: number) => PT + cH - (v / maxVal) * cH;
-
-    // Polyline point strings for played points only (connected line)
-    const playedPts = chartData.map((d, i) => ({ ...d, i })).filter((d) => d.played);
-    const myPts  = playedPts.map((d) => `${toX(d.i).toFixed(1)},${toY(d.myCum).toFixed(1)}`).join(' ');
-    const oppPts = playedPts.map((d) => `${toX(d.i).toFixed(1)},${toY(d.oppCum).toFixed(1)}`).join(' ');
-
-    // Find index where knockout stages begin (for the divider line)
-    const knockoutStartIdx = chartData.findIndex((d) => d.isStage);
-
-    const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(maxVal * f));
-    const myColor  = 'var(--accent)';
-    const oppColor = '#94a3b8';
-
-    return (
-      <>
-        <h3 className="wc-chart-heading">Score by Matchday</h3>
-        <div className="wc-chart-wrap">
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            width="100%"
-            style={{ display: 'block' }}
-            aria-label="Cumulative score by matchday"
-          >
-            {/* Y grid + labels */}
-            {yTicks.map((v) => (
-              <g key={`y-${v}`}>
-                <line x1={PL} y1={toY(v)} x2={W - PR} y2={toY(v)}
-                  stroke="var(--line)" strokeWidth={v === 0 ? 1.5 : 0.8} />
-                <text x={PL - 5} y={toY(v) + 4} textAnchor="end" fontSize={9} fill="var(--text-2)">{v}</text>
-              </g>
-            ))}
-
-            {/* Divider between Group Stage matchdays and knockout stages */}
-            {knockoutStartIdx > 0 && (
-              <line
-                x1={toX(knockoutStartIdx) - step / 2} y1={PT}
-                x2={toX(knockoutStartIdx) - step / 2} y2={PT + cH}
-                stroke="var(--line)" strokeWidth={1} strokeDasharray="4 3"
-              />
-            )}
-
-            {/* X axis labels */}
-            {chartData.map((d, i) => (
-              <text key={`xl-${i}`}
-                x={toX(i)} y={H - 6}
-                textAnchor="middle" fontSize={8.5}
-                fill={d.played ? 'var(--text-1)' : 'var(--text-2)'}
-              >
-                {d.label}
-              </text>
-            ))}
-
-            {/* Opponent line */}
-            {oppPts && (
-              <polyline points={oppPts} fill="none"
-                stroke={oppColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" opacity={0.75} />
-            )}
-
-            {/* My line */}
-            {myPts && (
-              <polyline points={myPts} fill="none"
-                stroke={myColor} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-            )}
-
-            {/* Data dots */}
-            {playedPts.map((d) => (
-              <g key={`dot-${d.i}`}>
-                <circle cx={toX(d.i)} cy={toY(d.myCum)}  r={3.5} fill={myColor} />
-                <circle cx={toX(d.i)} cy={toY(d.oppCum)} r={3}   fill={oppColor} opacity={0.8} />
-              </g>
-            ))}
-          </svg>
-        </div>
-
-        <div className="wc-chart-legend">
-          <span className="wc-chart-legend-item">
-            <span className="wc-chart-legend-dot" style={{ background: 'var(--accent)' }} />
-            {myName}
-          </span>
-          <span className="wc-chart-legend-item">
-            <span className="wc-chart-legend-dot" style={{ background: oppColor }} />
-            {oppName}
-          </span>
-        </div>
-
-        {/* ── Goals tiebreaker chart ─────────────────────────────────── */}
-        {(() => {
-          let myGCum = 0, oppGCum = 0;
-          const goalsData: ChartPoint[] = [];
-
-          // Group Stage: goals from picked team per matchday
-          for (const [md, mdFix] of sortedMds) {
-            let myMd = 0, oppMd = 0;
-            for (const f of mdFix) {
-              if (f.status !== 'FINAL' || f.homeScore === null || f.awayScore === null) continue;
-              const myPick = pickMap[f.id] ?? f.myPickSide;
-              if (myPick) myMd += myPick === 'HOME' ? f.homeScore : f.awayScore;
-              if (f.opponentPickSide) oppMd += f.opponentPickSide === 'HOME' ? f.homeScore : f.awayScore;
-            }
-            myGCum += myMd; oppGCum += oppMd;
-            goalsData.push({ label: `MD${md}`, myCum: myGCum, oppCum: oppGCum, played: mdFix.some(f => f.status === 'FINAL') });
-          }
-
-          // Knockout stages: tiebreakGoals from roundResults
-          for (const stage of KNOCKOUT_ORDER) {
-            const result = resultMap.get(stage);
-            const myE  = result?.participants.find(p => p.participantId === myParticipantId);
-            const oppE = result?.participants.find(p => p.participantId !== myParticipantId);
-            if (result) { myGCum += myE?.tiebreakGoals ?? 0; oppGCum += oppE?.tiebreakGoals ?? 0; }
-            const inAll = allRounds.some(r => r.stage === stage);
-            if (inAll || result) goalsData.push({ label: STAGE_ABBR[stage] ?? stage, myCum: myGCum, oppCum: oppGCum, played: Boolean(result), isStage: true });
-          }
-
-          if (!goalsData.some(d => d.played)) return null;
-
-          const gn = goalsData.length;
-          const gStep = gn > 1 ? cW / (gn - 1) : cW;
-          const gToX = (i: number) => PL + i * gStep;
-          const gMax = Math.max(...goalsData.map(d => Math.max(d.myCum, d.oppCum)), 4) * 1.15;
-          const gToY = (v: number) => PT + cH - (v / gMax) * cH;
-          const gTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(gMax * f));
-          const gPlayed = goalsData.map((d, i) => ({ ...d, i })).filter(d => d.played);
-          const gMyPts  = gPlayed.map(d => `${gToX(d.i).toFixed(1)},${gToY(d.myCum).toFixed(1)}`).join(' ');
-          const gOppPts = gPlayed.map(d => `${gToX(d.i).toFixed(1)},${gToY(d.oppCum).toFixed(1)}`).join(' ');
-          const gKoIdx  = goalsData.findIndex(d => d.isStage);
-
-          return (
-            <>
-              <h3 className="wc-chart-heading" style={{ marginTop: 8 }}>Goals Scored by Picks</h3>
-              <div className="wc-chart-wrap">
-                <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }} aria-label="Cumulative goals scored by picks">
-                  {gTicks.map(v => (
-                    <g key={`gy-${v}`}>
-                      <line x1={PL} y1={gToY(v)} x2={W - PR} y2={gToY(v)} stroke="var(--line)" strokeWidth={v === 0 ? 1.5 : 0.8} />
-                      <text x={PL - 5} y={gToY(v) + 4} textAnchor="end" fontSize={9} fill="var(--text-2)">{v}</text>
-                    </g>
-                  ))}
-                  {gKoIdx > 0 && (
-                    <line x1={gToX(gKoIdx) - gStep / 2} y1={PT} x2={gToX(gKoIdx) - gStep / 2} y2={PT + cH}
-                      stroke="var(--line)" strokeWidth={1} strokeDasharray="4 3" />
-                  )}
-                  {goalsData.map((d, i) => (
-                    <text key={`gx-${i}`} x={gToX(i)} y={H - 6} textAnchor="middle" fontSize={8.5}
-                      fill={d.played ? 'var(--text-1)' : 'var(--text-2)'}>{d.label}</text>
-                  ))}
-                  {gOppPts && <polyline points={gOppPts} fill="none" stroke={oppColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" opacity={0.75} />}
-                  {gMyPts  && <polyline points={gMyPts}  fill="none" stroke={myColor}  strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />}
-                  {gPlayed.map(d => (
-                    <g key={`gd-${d.i}`}>
-                      <circle cx={gToX(d.i)} cy={gToY(d.myCum)}  r={3.5} fill={myColor} />
-                      <circle cx={gToX(d.i)} cy={gToY(d.oppCum)} r={3}   fill={oppColor} opacity={0.8} />
-                    </g>
-                  ))}
-                </svg>
-              </div>
-              <div className="wc-chart-legend">
-                <span className="wc-chart-legend-item">
-                  <span className="wc-chart-legend-dot" style={{ background: 'var(--accent)' }} />
-                  {myName}: {myGCum} goals
-                </span>
-                <span className="wc-chart-legend-item">
-                  <span className="wc-chart-legend-dot" style={{ background: oppColor }} />
-                  {oppName}: {oppGCum} goals
-                </span>
-              </div>
-            </>
-          );
-        })()}
-
-        {/* Combined stakes + scores table */}
-        {(() => {
-          const STAGE_GAME_COUNTS: Record<string, number> = {
-            GROUP: 72, ROUND_OF_32: 16, ROUND_OF_16: 8,
-            QUARTERFINAL: 4, SEMIFINAL: 2, THIRD_PLACE: 1, FINAL: 1,
-          };
-          const settledStages = new Set(roundResults.map((r) => r.stage));
-          const resultByStage = new Map(roundResults.map((r) => [r.stage, r]));
-          const currentStage = currentRound?.stage;
-          const currentRemaining = fixtures.filter((f) => f.status !== 'FINAL').length;
-
-          const stakeRows = [...allRounds]
-            .sort((a, b) => ('order_index' in a ? a.order_index : 0) - ('order_index' in b ? b.order_index : 0))
-            .map((round) => {
-              const total = STAGE_GAME_COUNTS[round.stage] ?? 0;
-              const pts = STAGE_POINTS[round.stage] ?? 1;
-              const remaining = settledStages.has(round.stage) ? 0
-                : round.stage === currentStage ? currentRemaining
-                : total;
-              const result = resultByStage.get(round.stage);
-              const myEntry  = result?.participants.find((p) => p.participantId === myParticipantId);
-              const oppEntry = result?.participants.find((p) => p.participantId !== myParticipantId);
-              return {
-                label: fmtStage(round.stage),
-                total, remaining,
-                points: remaining * pts,
-                myPts:  result ? (myEntry?.points  ?? 0) : null,
-                oppPts: result ? (oppEntry?.points ?? 0) : null,
-              };
-            });
-
-          const totals = stakeRows.reduce(
-            (acc, r) => ({
-              total:    acc.total    + r.total,
-              remaining:acc.remaining+ r.remaining,
-              points:   acc.points   + r.points,
-              myPts:    acc.myPts    + (r.myPts  ?? 0),
-              oppPts:   acc.oppPts   + (r.oppPts ?? 0),
-            }),
-            { total: 0, remaining: 0, points: 0, myPts: 0, oppPts: 0 }
-          );
-
-          const avatarCell = (url: string | null | undefined, initial: string) => (
-            url
-              ? <img src={url} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover', display: 'block', margin: '0 auto' }} referrerPolicy="no-referrer" />
-              : <span style={{ display: 'block', textAlign: 'center', fontWeight: 700, fontSize: '0.75rem' }}>{initial}</span>
-          );
-
-          return (
-            <table className="wc-round-table wc-stakes-table">
-              <colgroup>
-                <col style={{ width: '30%' }} />
-                <col style={{ width: '14%' }} />
-                <col style={{ width: '14%' }} />
-                <col style={{ width: '14%' }} />
-                <col style={{ width: '14%' }} />
-                <col style={{ width: '14%' }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>Games</th>
-                  <th>Remaining</th>
-                  <th>Points</th>
-                  <th>{avatarCell(userAvatarUrl, (displayName || userEmail).charAt(0).toUpperCase())}</th>
-                  <th>{avatarCell(oppAvatarUrl, initials(selectedMatchup?.opponentDisplayName || selectedMatchup?.opponentEmail || 'O'))}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stakeRows.map((r) => (
-                  <tr key={r.label}>
-                    <td className="wc-stakes-stage">{r.label}</td>
-                    <td>{r.total}</td>
-                    <td>{r.remaining}</td>
-                    <td>{r.points}</td>
-                    <td>{r.myPts  !== null ? r.myPts  : '—'}</td>
-                    <td>{r.oppPts !== null ? r.oppPts : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td></td>
-                  <td><strong>{totals.total}</strong></td>
-                  <td><strong>{totals.remaining}</strong></td>
-                  <td><strong>{totals.points}</strong></td>
-                  <td><strong>{totals.myPts}</strong></td>
-                  <td><strong>{totals.oppPts}</strong></td>
-                </tr>
-              </tfoot>
-            </table>
-          );
-        })()}
-      </>
-    );
-  }
-
-  // ── Render: Pick summary (used in modal) ──────────────────────────────────
-
-  function renderPickSummary() {
-    const { total, urgent, soon, later } = pickSummaryStats;
-
-    if (total === 0) {
-      return (
-        <div className="wc-pick-summary-hero" style={{ paddingBottom: 8 }}>
-          <div style={{ fontSize: '1.8rem', textAlign: 'center' }}>✓</div>
-          <div className="wc-pick-summary-label" style={{ textAlign: 'center' }}>
-            You&apos;re all caught up — no picks to make right now.
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="wc-stack">
-        <div className="wc-pick-summary-hero">
-          <div className="wc-pick-summary-num">{total}</div>
-          <div className="wc-pick-summary-label">
-            {total === 1 ? 'pick to make' : 'picks to make'} this round
-          </div>
-        </div>
-
-        <div className="wc-pick-summary-rows">
-          {urgent > 0 && (
-            <div className="wc-pick-summary-row wc-pick-summary-row--urgent">
-              <span className="wc-pick-summary-dot wc-pick-summary-dot--urgent" />
-              <span className="wc-pick-summary-count">{urgent}</span>
-              <span className="wc-pick-summary-desc">
-                {urgent === 1 ? 'locks' : 'lock'} in the next 24 hours
-              </span>
-            </div>
-          )}
-          {soon > 0 && (
-            <div className="wc-pick-summary-row wc-pick-summary-row--soon">
-              <span className="wc-pick-summary-dot wc-pick-summary-dot--soon" />
-              <span className="wc-pick-summary-count">{soon}</span>
-              <span className="wc-pick-summary-desc">
-                {soon === 1 ? 'locks' : 'lock'} in 1–3 days
-              </span>
-            </div>
-          )}
-          {later > 0 && (
-            <div className="wc-pick-summary-row">
-              <span className="wc-pick-summary-dot" />
-              <span className="wc-pick-summary-count">{later}</span>
-              <span className="wc-pick-summary-desc">later this round</span>
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-          <button
-            className="wc-btn wc-btn-primary"
-            type="button"
-            onClick={() => {
-              setPickSummaryOpen(false);
-              setFilterNoPick(true);
-            }}
-          >
-            Show unpicked →
-          </button>
-          <button
-            className="wc-btn"
-            type="button"
-            onClick={() => setPickSummaryOpen(false)}
-          >
-            Dismiss
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Render: Profile (used in modal) ────────────────────────────────────────
-
-  function renderProfile() {
-    const shownName = displayName || userEmail.split('@')[0];
-    return (
-      <div className="wc-stack">
-
-        {/* Avatar + identity */}
-        <div className="wc-profile-header">
-          <div className="wc-profile-avatar-wrap">
-            {userAvatarUrl
-              ? <img src={userAvatarUrl} alt="Profile" className="wc-profile-avatar-img" referrerPolicy="no-referrer" />
-              : <span className="wc-profile-avatar-init">{shownName.charAt(0).toUpperCase()}</span>
-            }
-          </div>
-          <div className="wc-profile-identity">
-            <div className="wc-profile-identity-name">{shownName}</div>
-            <div className="wc-profile-identity-email">{userEmail}</div>
-            <div className="wc-profile-identity-hint">Tap photo to change</div>
-          </div>
-        </div>
-
-        {/* First / Last name fields */}
-        <div className="wc-name-row">
-          <div className="wc-floating-field">
-            <span className="wc-floating-label">First name</span>
-            <input
-              className="wc-floating-input"
-              value={firstName}
-              maxLength={32}
-              onChange={(e) => setFirstName(e.target.value)}
-              onBlur={handleNameBlur}
-            />
-          </div>
-          <div className="wc-floating-field">
-            <span className="wc-floating-label">Last name</span>
-            <input
-              className="wc-floating-input"
-              value={lastName}
-              maxLength={32}
-              onChange={(e) => setLastName(e.target.value)}
-              onBlur={handleNameBlur}
-            />
-          </div>
-        </div>
-        <div className="wc-profile-setting">
-          <div className="wc-profile-setting-label">Default pick if I miss kickoff</div>
-          <div className="wc-profile-setting-hint">If you don&apos;t pick before a match starts, this team side is used automatically.</div>
-          <div className="wc-toggle-group">
-            <button
-              className={`wc-toggle-btn${defaultPickSide === 'HOME' ? ' wc-toggle-btn--active' : ''}`}
-              type="button"
-              disabled={savingDefaultPick}
-              onClick={() => saveDefaultPickSide('HOME')}
-            >
-              Home
-            </button>
-            <button
-              className={`wc-toggle-btn${defaultPickSide === 'AWAY' ? ' wc-toggle-btn--active' : ''}`}
-              type="button"
-              disabled={savingDefaultPick}
-              onClick={() => saveDefaultPickSide('AWAY')}
-            >
-              Away
-            </button>
-          </div>
-        </div>
-
-        {pushSupported && (
-          <div className="wc-profile-setting">
-            <div className="wc-profile-setting-label">Push notifications</div>
-            <div className="wc-profile-setting-hint">
-              Get alerted when your opponent picks or results are settled.
-            </div>
-            <div className="wc-toggle-group">
-              <button
-                className={`wc-toggle-btn${!pushEnabled ? ' wc-toggle-btn--active' : ''}`}
-                type="button"
-                disabled={pushLoading}
-                onClick={() => pushEnabled && togglePush()}
-              >
-                Off
-              </button>
-              <button
-                className={`wc-toggle-btn${pushEnabled ? ' wc-toggle-btn--active' : ''}`}
-                type="button"
-                disabled={pushLoading}
-                onClick={() => !pushEnabled && togglePush()}
-              >
-                On
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="wc-profile-setting">
-          <div className="wc-profile-setting-label">Theme</div>
-          <div className="wc-toggle-group">
-            {(['system', 'light', 'dark'] as const).map((t) => (
-              <button
-                key={t}
-                className={`wc-toggle-btn${theme === t ? ' wc-toggle-btn--active' : ''}`}
-                type="button"
-                onClick={() => changeTheme(t)}
-              >
-                {t === 'system' ? 'System' : t === 'light' ? 'Day' : 'Night'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <ul className="wc-profile-list">
-          <li>Reduced motion is respected automatically.</li>
-        </ul>
-        <button className="wc-signout-btn" type="button" onClick={signOut}>
-          Sign Out
-        </button>
-      </div>
-    );
-  }
 
   // ── Shell ──────────────────────────────────────────────────────────────────
 
@@ -2535,63 +1814,21 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
       {/* Score chart modal */}
       {scoreChartOpen && selectedMatchup && (
-        <div
-          className="wc-modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Score breakdown"
-          onClick={(e) => { if (e.target === e.currentTarget) setScoreChartOpen(false); }}
-        >
-          <div className="wc-modal wc-modal--wide">
-            <button
-              className="wc-topbar-icon-btn"
-              aria-label="Close"
-              onClick={() => setScoreChartOpen(false)}
-              style={{ position: 'absolute', top: 12, right: 12 }}
-            >
-              ✕
-            </button>
-
-            {/* H2H scorebug — reuses topbar pill style */}
-            {(() => {
-              const me  = standing.find((s) => s.participantId === myParticipantId);
-              const opp = standing.find((s) => s.participantId !== myParticipantId);
-              const myPts  = me?.tournamentPoints  ?? 0;
-              const oppPts = opp?.tournamentPoints ?? 0;
-              const myName  = displayName || userEmail.split('@')[0];
-              const myInit  = initials(myName);
-              const oppName = selectedMatchup.opponentDisplayName ?? selectedMatchup.opponentEmail?.split('@')[0] ?? 'Opp';
-              const oppInit = initials(oppName);
-              return (
-                <div className="wc-chart-scorebug-wrap">
-                  <div className="wc-h2h">
-                    <div className="wc-h2h-player">
-                      <span className="wc-h2h-name">{myName}</span>
-                      {userAvatarUrl
-                        ? <img className="wc-h2h-avatar" src={userAvatarUrl} alt={myName} referrerPolicy="no-referrer" />
-                        : <span className="wc-h2h-avatar wc-h2h-avatar--me">{myInit}</span>
-                      }
-                    </div>
-                    <div className="wc-h2h-score">
-                      <span className={myPts > oppPts ? 'wc-h2h-pts--leading' : myPts < oppPts ? 'wc-h2h-pts--trailing' : ''}>{myPts}</span>
-                      <span className="wc-h2h-sep">–</span>
-                      <span className={oppPts > myPts ? 'wc-h2h-pts--leading' : oppPts < myPts ? 'wc-h2h-pts--trailing' : ''}>{oppPts}</span>
-                    </div>
-                    <div className="wc-h2h-player wc-h2h-player--right">
-                      <span className="wc-h2h-name">{oppName}</span>
-                      {oppAvatarUrl
-                        ? <img className="wc-h2h-avatar" src={oppAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
-                        : <span className="wc-h2h-avatar wc-h2h-avatar--opp">{oppInit}</span>
-                      }
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {renderScoreChart()}
-          </div>
-        </div>
+        <ScoreChartModal
+          standing={standing}
+          roundResults={roundResults}
+          allRounds={allRounds}
+          fixtures={fixtures}
+          pickMap={pickMap}
+          myParticipantId={myParticipantId}
+          currentRound={currentRound}
+          selectedMatchup={selectedMatchup}
+          userAvatarUrl={userAvatarUrl}
+          oppAvatarUrl={oppAvatarUrl}
+          userEmail={userEmail}
+          displayName={displayName}
+          onClose={() => setScoreChartOpen(false)}
+        />
       )}
 
       {/* Pick summary modal */}
@@ -2614,7 +1851,11 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 ✕
               </button>
             </div>
-            {renderPickSummary()}
+            <PickSummaryContent
+              stats={pickSummaryStats}
+              onShowUnpicked={() => { setPickSummaryOpen(false); setFilterNoPick(true); }}
+              onDismiss={() => setPickSummaryOpen(false)}
+            />
           </div>
         </div>
       )}
@@ -2639,7 +1880,27 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 ✕
               </button>
             </div>
-            {renderProfile()}
+            <ProfileSettings
+              userEmail={userEmail}
+              userAvatarUrl={userAvatarUrl}
+              displayName={displayName}
+              firstName={firstName}
+              lastName={lastName}
+              savingName={savingName}
+              defaultPickSide={defaultPickSide}
+              savingDefaultPick={savingDefaultPick}
+              pushSupported={pushSupported}
+              pushEnabled={pushEnabled}
+              pushLoading={pushLoading}
+              theme={theme}
+              onFirstNameChange={setFirstName}
+              onLastNameChange={setLastName}
+              onNameBlur={handleNameBlur}
+              onDefaultPickSide={saveDefaultPickSide}
+              onTogglePush={togglePush}
+              onThemeChange={changeTheme}
+              onSignOut={signOut}
+            />
           </div>
         </div>
       )}
