@@ -1,0 +1,27 @@
+{
+  "name": "World Cup Pick'Em '26",
+  "short_name": "Pick'Em",
+  "description": "Head-to-head FIFA World Cup 2026 prediction game. Pick match winners, earn points, beat your friend.",
+  "start_url": "/play",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#e9f4ff",
+  "theme_color": "#1266d6",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["sports", "games"],
+  "lang": "en"
+}
