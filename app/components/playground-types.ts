@@ -68,6 +68,28 @@ export type RoundResultEntry = {
   participants: RoundResultParticipant[];
 };
 
+export type TournamentFormFixture = {
+  id: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  status: string;
+  startsAt: string;
+  stage: string;
+  groupName: string | null;
+  isLocked: boolean;
+  myPickSide: 'HOME' | 'AWAY' | null;
+  opponentPickSide: 'HOME' | 'AWAY' | null;
+};
+
+export type TournamentForm = {
+  homeTeam: string;
+  awayTeam: string;
+  homeFixtures: TournamentFormFixture[];
+  awayFixtures: TournamentFormFixture[];
+};
+
 export type ContentTab = 'details' | 'squad' | 'recap';
 export type DrawerTab = 'chat' | 'calendar' | 'tv';
 export type MobileView = 'feed' | 'content';

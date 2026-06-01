@@ -10,6 +10,7 @@ import { PickSummaryContent } from '@/app/components/pick-summary-content';
 import {
   Tournament, Matchup, Round, Fixture,
   ParticipantStanding, RoundResultParticipant, RoundResultEntry,
+  TournamentForm, TournamentFormFixture,
   ContentTab, DrawerTab, MobileView, NoticeTone,
 } from '@/app/components/playground-types';
 import {
@@ -106,6 +107,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [headToHead, setHeadToHead] = useState<{ year: number; stage: string; home: string; away: string; homeGoals: number | null; awayGoals: number | null }[]>([]);
   const [h2hHome, setH2hHome] = useState<string>('');
   const [h2hAway, setH2hAway] = useState<string>('');
+  const [teamForm, setTeamForm] = useState<TournamentForm | null>(null);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -877,6 +879,120 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           );
         })()}
 
+        {/* ── Tournament form ───────────────────────────────────────── */}
+        {teamForm && (teamForm.homeFixtures.length > 0 || teamForm.awayFixtures.length > 0) && (() => {
+
+          function renderFormCard(fc: TournamentFormFixture) {
+            const myPick  = fc.myPickSide;
+            const oppPick = fc.opponentPickSide;
+            const homePts = fc.status === 'FINAL' ? computePickPoints(fc as unknown as Fixture, 'HOME', fc.stage) : null;
+            const awayPts = fc.status === 'FINAL' ? computePickPoints(fc as unknown as Fixture, 'AWAY', fc.stage) : null;
+            const myPickState = !myPick ? null
+              : fc.status === 'FINAL'
+                ? ((myPick === 'HOME' ? homePts : awayPts) ?? 0) > 0 ? 'correct' : 'wrong'
+                : 'pending';
+
+            const kickoffLabel = new Date(fc.startsAt).toLocaleString('en-US', {
+              month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC',
+            });
+
+            return (
+              <div key={fc.id} className="wc-scorebug wc-scorebug--locked" style={{ cursor: 'default' }}>
+                {fc.groupName && (
+                  <div className="wc-scorebug-group">
+                    <span>Group {fc.groupName}</span>
+                    <span className="wc-scorebug-kickoff">{kickoffLabel}</span>
+                  </div>
+                )}
+                <div className="wc-scorebug-body">
+                  {/* Home pts */}
+                  <div className="wc-scorebug-pts">
+                    {fc.status === 'FINAL' && (myPick === 'HOME' || oppPick === 'HOME') && homePts !== null && homePts > 0 && (
+                      <span className="wc-scorebug-pts-val">{homePts > 0 ? `+${homePts}` : ''}</span>
+                    )}
+                  </div>
+
+                  {/* Home team */}
+                  <div className="wc-scorebug-team">
+                    <div className="wc-scorebug-crest-wrap">
+                      <span className="wc-scorebug-crest">{teamFlag(fc.homeTeam)}</span>
+                      {myPick === 'HOME' && (
+                        <span className={`wc-pick-badge wc-pick-badge--avatar wc-pick-badge--home-side${myPickState === 'wrong' ? ' wc-pick-badge--wrong' : myPickState === 'correct' ? ' wc-pick-badge--correct' : ''}`}>
+                          {userAvatarUrl ? <img src={userAvatarUrl} alt="" className="wc-pick-badge-img" /> : <span className="wc-pick-badge-init">{initials(displayName || userEmail)}</span>}
+                        </span>
+                      )}
+                      {oppPick === 'HOME' && (
+                        <span className="wc-pick-badge wc-pick-badge--avatar wc-pick-badge--home-side">
+                          {oppAvatarUrl ? <img src={oppAvatarUrl} alt="" className="wc-pick-badge-img" /> : <span className="wc-pick-badge-init">{initials(selectedMatchup?.opponentDisplayName || selectedMatchup?.opponentEmail || 'Opp')}</span>}
+                        </span>
+                      )}
+                    </div>
+                    <div className="wc-scorebug-code">{teamCode(fc.homeTeam)}</div>
+                  </div>
+
+                  {/* Score */}
+                  <div className="wc-scorebug-center">
+                    <div className="wc-scorebug-nums">
+                      <span>{fc.homeScore !== null ? fc.homeScore : '—'}</span>
+                      <span className="wc-scorebug-sep">–</span>
+                      <span>{fc.awayScore !== null ? fc.awayScore : '—'}</span>
+                    </div>
+                    <div className="wc-scorebug-status-row">
+                      <StatusGlyph status={fc.status} isLocked={true} />
+                    </div>
+                  </div>
+
+                  {/* Away team */}
+                  <div className="wc-scorebug-team">
+                    <div className="wc-scorebug-crest-wrap">
+                      <span className="wc-scorebug-crest">{teamFlag(fc.awayTeam)}</span>
+                      {myPick === 'AWAY' && (
+                        <span className={`wc-pick-badge wc-pick-badge--avatar wc-pick-badge--away-side${myPickState === 'wrong' ? ' wc-pick-badge--wrong' : myPickState === 'correct' ? ' wc-pick-badge--correct' : ''}`}>
+                          {userAvatarUrl ? <img src={userAvatarUrl} alt="" className="wc-pick-badge-img" /> : <span className="wc-pick-badge-init">{initials(displayName || userEmail)}</span>}
+                        </span>
+                      )}
+                      {oppPick === 'AWAY' && (
+                        <span className="wc-pick-badge wc-pick-badge--avatar wc-pick-badge--away-side">
+                          {oppAvatarUrl ? <img src={oppAvatarUrl} alt="" className="wc-pick-badge-img" /> : <span className="wc-pick-badge-init">{initials(selectedMatchup?.opponentDisplayName || selectedMatchup?.opponentEmail || 'Opp')}</span>}
+                        </span>
+                      )}
+                    </div>
+                    <div className="wc-scorebug-code">{teamCode(fc.awayTeam)}</div>
+                  </div>
+
+                  {/* Away pts */}
+                  <div className="wc-scorebug-pts">
+                    {fc.status === 'FINAL' && (myPick === 'AWAY' || oppPick === 'AWAY') && awayPts !== null && awayPts > 0 && (
+                      <span className="wc-scorebug-pts-val">{awayPts > 0 ? `+${awayPts}` : ''}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <>
+              {teamForm.homeFixtures.length > 0 && (
+                <div className="wc-fd-section">
+                  <div className="wc-fd-section-label">{teamForm.homeTeam} this tournament</div>
+                  <div className="wc-form-list">
+                    {teamForm.homeFixtures.map(renderFormCard)}
+                  </div>
+                </div>
+              )}
+              {teamForm.awayFixtures.length > 0 && (
+                <div className="wc-fd-section">
+                  <div className="wc-fd-section-label">{teamForm.awayTeam} this tournament</div>
+                  <div className="wc-form-list">
+                    {teamForm.awayFixtures.map(renderFormCard)}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
+
         {/* Previous World Cup Meetings */}
         {headToHead.length > 0 && (
           <div className="wc-fd-section">
@@ -1480,9 +1596,17 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                                   setContentTab('details');
                                   setMobileView('content');
                                   setHeadToHead([]);
+                                  setTeamForm(null);
                                   fetch(`/api/fixtures/${f.id}/head-to-head`)
                                     .then((r) => r.json())
                                     .then((d) => { setHeadToHead(d.meetings ?? []); setH2hHome(d.home ?? ''); setH2hAway(d.away ?? ''); })
+                                    .catch(() => {});
+                                  const formUrl = selectedMatchupId
+                                    ? `/api/fixtures/${f.id}/form?matchupId=${selectedMatchupId}`
+                                    : `/api/fixtures/${f.id}/form`;
+                                  fetch(formUrl)
+                                    .then((r) => r.json())
+                                    .then((d) => { if (d.ok) setTeamForm(d); })
                                     .catch(() => {});
                                 }}
                               >

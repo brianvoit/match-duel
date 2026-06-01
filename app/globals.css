@@ -2646,6 +2646,17 @@ select {
   gap: 6px;
 }
 
+.wc-form-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Form scorebugs are non-interactive — override button cursor */
+.wc-form-list .wc-scorebug {
+  cursor: default;
+}
+
 .wc-fd-section-label {
   font-size: 0.72rem;
   font-weight: 700;
