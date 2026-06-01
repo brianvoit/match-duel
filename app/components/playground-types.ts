@@ -90,6 +90,59 @@ export type TournamentForm = {
   awayFixtures: TournamentFormFixture[];
 };
 
+// ── Pre-match contextual data ──────────────────────────────────────────────────
+
+export type PreMatchPredictions = {
+  homePercent: number;
+  drawPercent: number;
+  awayPercent: number;
+  advice: string;
+  homeForm: string; // e.g. "WWDLW"
+  awayForm: string;
+};
+
+export type GroupStandingRow = {
+  teamName: string;
+  played: number; won: number; drawn: number; lost: number;
+  goalsFor: number; goalsAgainst: number; goalDiff: number; points: number;
+  isHome: boolean; isAway: boolean;
+};
+
+export type TeamGoals = { avgFor: string; avgAgainst: string };
+
+export type InjuryEntry = {
+  playerName: string;
+  type: string; // 'Injured' | 'Suspended' | 'Doubtful'
+  reason: string;
+};
+
+export type MatchOdds = { home: string; draw: string; away: string; bookmaker: string };
+
+export type TopScorer = {
+  playerName: string; teamName: string; goals: number; assists: number;
+};
+
+export type StyleComparison = {
+  form: { home: number; away: number };
+  att:  { home: number; away: number };
+  def:  { home: number; away: number };
+};
+
+export type PreMatchData = {
+  homeTeam: string;
+  awayTeam: string;
+  predictions:  PreMatchPredictions | null;
+  standings:    { group: string; rows: GroupStandingRow[] } | null;
+  homeGoals:    TeamGoals | null;
+  awayGoals:    TeamGoals | null;
+  injuries:     { home: InjuryEntry[]; away: InjuryEntry[] } | null;
+  odds:         MatchOdds | null;
+  topScorers:   TopScorer[] | null;
+  comparison:   StyleComparison | null;
+};
+
+// ── Match statistics (Recap tab) ───────────────────────────────────────────────
+
 export type StatRow = {
   type: string;
   home: number | string | null;

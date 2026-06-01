@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { createClient } from '@/lib/supabase/client';
 import { TEAM_INFO, teamCode, teamFlag } from '@/lib/data/teamInfo';
 import { ChatPanel } from '@/app/components/chat-panel';
+import { PreMatchPanel } from '@/app/components/pre-match-panel';
 import { ScoreChartModal } from '@/app/components/score-chart-modal';
 import { ProfileSettings } from '@/app/components/profile-settings';
 import { PickSummaryContent } from '@/app/components/pick-summary-content';
@@ -11,7 +12,7 @@ import {
   Tournament, Matchup, Round, Fixture,
   ParticipantStanding, RoundResultParticipant, RoundResultEntry,
   TournamentForm, TournamentFormFixture,
-  SquadData, RecapData,
+  SquadData, RecapData, PreMatchData,
   ContentTab, DrawerTab, MobileView, NoticeTone,
 } from '@/app/components/playground-types';
 import {
@@ -115,6 +116,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [squadLoading, setSquadLoading] = useState(false);
   const [recapData, setRecapData] = useState<RecapData | null>(null);
   const [recapLoading, setRecapLoading] = useState(false);
+  const [preMatchData, setPreMatchData] = useState<PreMatchData | null>(null);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -336,6 +338,15 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       applyThemeClass(saved);
     }
   }, []);
+
+  // Fetch pre-match context whenever a fixture is selected
+  useEffect(() => {
+    if (!selectedFixtureId) { setPreMatchData(null); return; }
+    fetch(`/api/fixtures/${selectedFixtureId}/pre-match`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (d.ok) setPreMatchData(d); })
+      .catch(() => {});
+  }, [selectedFixtureId]);
 
   // Fetch squad lineups when the Squad tab is active
   useEffect(() => {
@@ -959,6 +970,9 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             </>
           );
         })()}
+
+        {/* ── Pre-match context ─────────────────────────────────────── */}
+        {preMatchData && <PreMatchPanel data={preMatchData} />}
 
         {/* ── Tournament form ───────────────────────────────────────── */}
         {teamForm && (teamForm.homeFixtures.length > 0 || teamForm.awayFixtures.length > 0) && (() => {

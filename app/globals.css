@@ -2606,6 +2606,263 @@ select {
   }
 }
 
+/* ── Pre-match panel ─────────────────────────────────────────────────────────── */
+
+.wc-pm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Win probability */
+.wc-pm-prob {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.wc-pm-prob-team,
+.wc-pm-prob-draw {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.wc-pm-prob-pct {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.wc-pm-prob-pct--home  { color: var(--accent); }
+.wc-pm-prob-pct--draw  { color: var(--text-2); font-size: 1.1rem; }
+.wc-pm-prob-pct--away  { color: var(--warn); }
+
+.wc-pm-prob-name {
+  font-size: 0.68rem;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.wc-pm-prob-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+  background: var(--line);
+}
+
+.wc-pm-prob-bar-home { background: var(--accent); }
+.wc-pm-prob-bar-draw { background: var(--text-2); opacity: 0.5; }
+.wc-pm-prob-bar-away { background: var(--warn); }
+
+.wc-pm-advice {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-2);
+  text-align: center;
+  font-style: italic;
+}
+
+/* Odds */
+.wc-pm-odds {
+  display: flex;
+  gap: 8px;
+}
+
+.wc-pm-odds-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 10px 8px;
+}
+
+.wc-pm-odds-odd {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-0);
+}
+
+.wc-pm-odds-implied {
+  font-size: 0.72rem;
+  color: var(--text-2);
+}
+
+.wc-pm-odds-label {
+  font-size: 0.65rem;
+  color: var(--text-2);
+  text-align: center;
+  margin-top: 2px;
+}
+
+/* Standings table */
+.wc-pm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.wc-pm-table th {
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-2);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.wc-pm-table td {
+  text-align: center;
+  padding: 5px 6px;
+  color: var(--text-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.wc-pm-table-team { text-align: left !important; }
+.wc-pm-table-highlight td { color: var(--text-0); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.wc-pm-table tr:last-child td { border-bottom: none; }
+
+/* Form & Goals */
+.wc-pm-form-rows { display: flex; flex-direction: column; gap: 8px; }
+
+.wc-pm-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wc-pm-form-team {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 120px;
+}
+
+.wc-pm-form-team-name { font-size: 0.78rem; font-weight: 600; color: var(--text-0); }
+
+.wc-pm-form-badges { display: flex; gap: 3px; }
+
+.wc-pm-form-badge {
+  width: 20px; height: 20px;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 800; color: #fff;
+}
+
+.wc-pm-form-badge--win  { background: var(--ok); }
+.wc-pm-form-badge--loss { background: var(--danger); }
+.wc-pm-form-badge--draw { background: var(--warn); }
+
+.wc-pm-form-na { color: var(--text-2); font-size: 0.75rem; }
+
+.wc-pm-form-goals {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-1);
+}
+
+/* Injuries */
+.wc-pm-injuries { display: flex; flex-direction: column; gap: 10px; }
+
+.wc-pm-injury-team-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 4px;
+}
+
+.wc-pm-injury {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  margin-bottom: 3px;
+}
+
+.wc-pm-injury-name { font-size: 0.78rem; color: var(--text-0); }
+
+.wc-pm-injury-type {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.wc-pm-injury--injured    .wc-pm-injury-type { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+.wc-pm-injury--suspended  .wc-pm-injury-type { background: color-mix(in srgb, var(--warn) 15%, transparent);   color: var(--warn); }
+.wc-pm-injury--doubtful   .wc-pm-injury-type { background: var(--line); color: var(--text-2); }
+
+/* Style comparison */
+.wc-pm-comp-header-teams {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 8px;
+}
+
+.wc-pm-comp-row { margin-bottom: 8px; }
+
+.wc-pm-comp-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.wc-pm-comp-label {
+  flex: 1;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-1);
+}
+
+.wc-pm-comp-val { font-size: 0.75rem; font-weight: 700; min-width: 32px; }
+.wc-pm-comp-val--home { color: var(--accent); text-align: left; }
+.wc-pm-comp-val--away { color: var(--warn); text-align: right; }
+
+/* Top scorers */
+.wc-pm-scorers { display: flex; flex-direction: column; gap: 3px; }
+
+.wc-pm-scorer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  background: var(--glass);
+}
+
+.wc-pm-scorer--highlight {
+  background: color-mix(in srgb, var(--accent) 8%, var(--glass) 92%);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.wc-pm-scorer-rank  { min-width: 16px; color: var(--text-2); font-size: 0.7rem; font-weight: 700; }
+.wc-pm-scorer-flag  { font-size: 0.9rem; }
+.wc-pm-scorer-name  { flex: 1; color: var(--text-0); font-weight: 500; }
+.wc-pm-scorer-goals { font-weight: 700; color: var(--text-0); }
+.wc-pm-scorer-assists { font-size: 0.7rem; color: var(--text-2); }
+
 /* ── Recap / Statistics ──────────────────────────────────────────────────────── */
 
 .wc-recap {
