@@ -1590,7 +1590,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                         {hasFilters && isCurrentRound ? 'No fixtures match the filter.' : 'No fixtures yet.'}
                       </div>
                     ) : (() => {
-                        let lastMatchday = 0;
+                        let lastDateStr = '';
                         return roundFixtures.map((f) => {
                           const isSelected = f.id === selectedFixtureId;
                           const myPick = pickMap[f.id] ?? f.myPickSide ?? null;
@@ -1598,9 +1598,11 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                           const hasPickOrder = Object.keys(pickOrder).length > 0;
                           // Completed-round fixtures are always "accessible" for display
                           const isMyFixture = !isCurrentRound || !hasPickOrder || pickOrder[f.id] === myParticipantId;
-                          const thisMatchday = f.matchday ?? 1;
-                          const showMatchdayHeader = thisMatchday !== lastMatchday;
-                          if (showMatchdayHeader) lastMatchday = thisMatchday;
+                          const thisDateStr = new Date(f.startsAt).toLocaleDateString('en-US', {
+                            weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
+                          });
+                          const showDateHeader = thisDateStr !== lastDateStr;
+                          if (showDateHeader) lastDateStr = thisDateStr;
 
                           // Format kickoff time: "Jun 11 · 3:00 PM"
                           const kickoffDate = new Date(f.startsAt);
@@ -1614,8 +1616,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
                           return (
                             <div key={f.id}>
-                              {showMatchdayHeader && (
-                                <div className="wc-matchday-header">Matchday {thisMatchday}</div>
+                              {showDateHeader && (
+                                <div className="wc-matchday-header">{thisDateStr}</div>
                               )}
                               <button
                                 className={`wc-scorebug${isSelected ? ' wc-scorebug--selected' : ''}${f.isLocked ? ' wc-scorebug--locked' : ''}${!f.isLocked && !isMyFixture ? ' wc-scorebug--not-mine' : ''}`}
@@ -1970,6 +1972,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           roundResults={roundResults}
           allRounds={allRounds}
           fixtures={fixtures}
+          completedRoundFixtures={completedRoundFixtures}
           pickMap={pickMap}
           myParticipantId={myParticipantId}
           currentRound={currentRound}

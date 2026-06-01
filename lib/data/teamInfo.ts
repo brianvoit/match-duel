@@ -42,12 +42,14 @@ export const TEAM_INFO: Record<string, { flag: string; code: string }> = {
   'Scotland':                 { flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿', code: 'SCO' },
   'Wales':                    { flag: '🏴󠁧󠁢󠁷󠁬󠁳󠁿', code: 'WAL' },
   'Czech Republic':           { flag: '🇨🇿', code: 'CZE' },
+  'Czechia':                  { flag: '🇨🇿', code: 'CZE' },  // FIFA official name
   'Slovenia':                 { flag: '🇸🇮', code: 'SVN' },
   'Slovakia':                 { flag: '🇸🇰', code: 'SVK' },
   'Romania':                  { flag: '🇷🇴', code: 'ROU' },
   'Hungary':                  { flag: '🇭🇺', code: 'HUN' },
   'Ukraine':                  { flag: '🇺🇦', code: 'UKR' },
   'Turkey':                   { flag: '🇹🇷', code: 'TUR' },
+  'Türkiye':                  { flag: '🇹🇷', code: 'TUR' },  // FIFA official name
   'Albania':                  { flag: '🇦🇱', code: 'ALB' },
   'Sweden':                   { flag: '🇸🇪', code: 'SWE' },
   'Norway':                   { flag: '🇳🇴', code: 'NOR' },
@@ -73,6 +75,7 @@ export const TEAM_INFO: Record<string, { flag: string; code: string }> = {
   'Congo DR':                 { flag: '🇨🇩', code: 'COD' },
   'DR Congo':                 { flag: '🇨🇩', code: 'COD' },
   'Cape Verde':               { flag: '🇨🇻', code: 'CPV' },
+  'Cabo Verde':               { flag: '🇨🇻', code: 'CPV' },  // FIFA official name
   // ── Asia ────────────────────────────────────────────────────────────────────
   'Japan':                    { flag: '🇯🇵', code: 'JPN' },
   'South Korea':              { flag: '🇰🇷', code: 'KOR' },
@@ -80,6 +83,7 @@ export const TEAM_INFO: Record<string, { flag: string; code: string }> = {
   'Saudi Arabia':             { flag: '🇸🇦', code: 'KSA' },
   'Australia':                { flag: '🇦🇺', code: 'AUS' },
   'Iran':                     { flag: '🇮🇷', code: 'IRN' },
+  'IR Iran':                  { flag: '🇮🇷', code: 'IRN' },  // FIFA official name
   'Qatar':                    { flag: '🇶🇦', code: 'QAT' },
   'Jordan':                   { flag: '🇯🇴', code: 'JOR' },
   'Uzbekistan':               { flag: '🇺🇿', code: 'UZB' },

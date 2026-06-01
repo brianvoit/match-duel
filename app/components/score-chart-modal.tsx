@@ -16,6 +16,7 @@ interface ScoreChartModalProps {
   roundResults: RoundResultEntry[];
   allRounds: Round[];
   fixtures: Fixture[];
+  completedRoundFixtures: Record<string, Fixture[]>;
   pickMap: Record<string, 'HOME' | 'AWAY'>;
   myParticipantId: string | null;
   currentRound: Round | null;
@@ -65,7 +66,7 @@ function buildChart(
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function ScoreChartModal({
-  standing, roundResults, allRounds, fixtures, pickMap,
+  standing, roundResults, allRounds, fixtures, completedRoundFixtures, pickMap,
   myParticipantId, currentRound, selectedMatchup,
   userAvatarUrl, oppAvatarUrl, userEmail, displayName,
   onClose,
@@ -101,10 +102,17 @@ export function ScoreChartModal({
 
   const resultMap = new Map(roundResults.map(r => [r.stage, r]));
 
-  // ── Build matchday groups for Group Stage ────────────────────────────────────
+  // ── Build matchday groups from GROUP round fixtures ──────────────────────────
+  // Use completedRoundFixtures so all 3 matchdays show on the chart, not just
+  // the current round. Falls back to current `fixtures` if group data absent.
+
+  const groupRound = allRounds.find(r => r.stage === 'GROUP');
+  const groupFixtures = groupRound
+    ? (completedRoundFixtures[groupRound.id] ?? fixtures)
+    : fixtures;
 
   const mdGroups = new Map<number, Fixture[]>();
-  for (const f of fixtures) {
+  for (const f of groupFixtures) {
     const md = f.matchday ?? 1;
     if (!mdGroups.has(md)) mdGroups.set(md, []);
     mdGroups.get(md)!.push(f);
@@ -120,8 +128,9 @@ export function ScoreChartModal({
     let myMd = 0, oppMd = 0;
     for (const f of mdFix) {
       const myPick = pickMap[f.id] ?? f.myPickSide;
-      myMd  += computePickPoints(f, myPick,            currentRound?.stage ?? 'GROUP') ?? 0;
-      oppMd += computePickPoints(f, f.opponentPickSide, currentRound?.stage ?? 'GROUP') ?? 0;
+      // Always use GROUP stage points for group stage fixtures
+      myMd  += computePickPoints(f, myPick,             'GROUP') ?? 0;
+      oppMd += computePickPoints(f, f.opponentPickSide, 'GROUP') ?? 0;
     }
     ptsMyCum += myMd; ptsOppCum += oppMd;
     ptsData.push({ label: `MD${md}`, myCum: ptsMyCum, oppCum: ptsOppCum, played: mdFix.some(f => f.status === 'FINAL') });
