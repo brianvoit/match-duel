@@ -87,6 +87,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [pickMap, setPickMap] = useState<Record<string, 'HOME' | 'AWAY'>>({});
   const [pickOrder, setPickOrder] = useState<Record<string, string>>({});
+  const [completedRoundFixtures, setCompletedRoundFixtures] = useState<Record<string, Fixture[]>>({});
   const [myParticipantId, setMyParticipantId] = useState<string | null>(null);
   const [standing, setStanding] = useState<ParticipantStanding[]>([]);
   const [roundResults, setRoundResults] = useState<RoundResultEntry[]>([]);
@@ -418,7 +419,30 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     }
     const round = (roundPayload.currentRound as Round | null) ?? null;
     setCurrentRound(round);
-    setAllRounds((roundPayload.rounds as Round[] | null) ?? []);
+    const rounds = (roundPayload.rounds as Round[] | null) ?? [];
+    setAllRounds(rounds);
+
+    // Background-fetch fixtures for every completed round so they show in the feed
+    const completedRounds = rounds.filter(r => r.is_complete);
+    if (completedRounds.length > 0) {
+      Promise.all(
+        completedRounds.map(async (r) => {
+          const url = matchupId
+            ? `/api/rounds/${r.id}/fixtures?matchupId=${matchupId}`
+            : `/api/rounds/${r.id}/fixtures`;
+          const res = await fetch(url, { cache: 'no-store' });
+          const payload = await res.json();
+          return { roundId: r.id, fixtures: (payload.fixtures ?? []) as Fixture[] };
+        })
+      ).then((results) => {
+        const map: Record<string, Fixture[]> = {};
+        for (const { roundId, fixtures } of results) map[roundId] = fixtures;
+        setCompletedRoundFixtures(map);
+      }).catch(() => {});
+    } else {
+      setCompletedRoundFixtures({});
+    }
+
     if (!round) {
       setFixtures([]);
       setPickMap({});
@@ -1533,9 +1557,12 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             ) : (
               allRounds.map((round) => {
                 const isCurrentRound = round.id === currentRound?.id;
-                const roundFixtures = isCurrentRound ? visibleFixtures : [];
+                const isFutureRound = !round.is_complete && !isCurrentRound;
+                // null = still fetching; [] = loaded but empty
+                const roundFixtures: Fixture[] | null = isCurrentRound
+                  ? visibleFixtures
+                  : (completedRoundFixtures[round.id] ?? null);
                 const hasFilters = !!(filterGroup || filterNoPick || filterPickable);
-                // For non-current rounds, only hide if a group filter is active (groups only exist in GROUP stage)
                 if (hasFilters && filterGroup && round.stage !== 'GROUP') return null;
 
                 return (
@@ -1553,22 +1580,24 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                       )}
                     </div>
 
-                    {/* Fixtures or TBD placeholder */}
-                    {isCurrentRound ? (
-                      roundFixtures.length === 0 ? (
-                        <div className="wc-round-tbd">
-                          {hasFilters ? 'No fixtures match the filter.' : 'No fixtures yet.'}
-                        </div>
-                      ) : (() => {
+                    {/* Fixtures, loading, or TBD placeholder */}
+                    {isFutureRound ? (
+                      <div className="wc-round-tbd">Fixtures TBD</div>
+                    ) : roundFixtures === null ? (
+                      <div className="wc-round-tbd" style={{ opacity: 0.5 }}>Loading…</div>
+                    ) : roundFixtures.length === 0 ? (
+                      <div className="wc-round-tbd">
+                        {hasFilters && isCurrentRound ? 'No fixtures match the filter.' : 'No fixtures yet.'}
+                      </div>
+                    ) : (() => {
                         let lastMatchday = 0;
                         return roundFixtures.map((f) => {
                           const isSelected = f.id === selectedFixtureId;
                           const myPick = pickMap[f.id] ?? f.myPickSide ?? null;
                           const pts = computePickPoints(f, myPick, round.stage);
-                          // Fixture is "mine" when pick order hasn't loaded yet (allow all),
-                          // or when this fixture is explicitly assigned to me.
                           const hasPickOrder = Object.keys(pickOrder).length > 0;
-                          const isMyFixture = !hasPickOrder || pickOrder[f.id] === myParticipantId;
+                          // Completed-round fixtures are always "accessible" for display
+                          const isMyFixture = !isCurrentRound || !hasPickOrder || pickOrder[f.id] === myParticipantId;
                           const thisMatchday = f.matchday ?? 1;
                           const showMatchdayHeader = thisMatchday !== lastMatchday;
                           if (showMatchdayHeader) lastMatchday = thisMatchday;
@@ -1707,9 +1736,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                           );
                         });
                       })()
-                    ) : (
-                      <div className="wc-round-tbd">Fixtures TBD</div>
-                    )}
+                    }
                   </div>
                 );
               })
