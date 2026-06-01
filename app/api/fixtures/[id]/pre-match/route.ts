@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
+import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
 import type {
   PreMatchData, PreMatchPredictions, GroupStandingRow,
   TeamGoals, InjuryEntry, MatchOdds, TopScorer, StyleComparison,
@@ -56,6 +57,15 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   const season = serverEnv.API_FOOTBALL_SEASON;
 
   if (!key || !extId) return NextResponse.json({ ok: true, ...base });
+
+  // ── Check cache ───────────────────────────────────────────────────────────
+  // Pre-match data: cache for 6 hours; skip cache if fixture is FINAL
+  const fixtureStatus = (await (async () => {
+    const { data } = await (createServiceRoleClient()).from('fixture').select('status').eq('id', id).maybeSingle() as { data: { status: string } | null };
+    return data?.status ?? 'SCHEDULED';
+  })());
+  const cachedPre = await getCached(id, 'pre_match', fixtureStatus as never);
+  if (cachedPre) return NextResponse.json({ ok: true, ...base, ...cachedPre });
 
   // Fire all API calls in parallel
   const [predRaw, standRaw, injRaw, oddsRaw, scorersRaw] = await Promise.all([
@@ -175,10 +185,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     });
   }
 
-  return NextResponse.json({
-    ok: true,
-    ...base,
-    predictions, standings, homeGoals, awayGoals,
-    injuries, odds, topScorers, comparison,
-  } satisfies PreMatchData & { ok: boolean });
+  const payload = { predictions, standings, homeGoals, awayGoals, injuries, odds, topScorers, comparison };
+  await setCached(id, 'pre_match', payload as unknown as Record<string, unknown>);
+  return NextResponse.json({ ok: true, ...base, ...payload } satisfies PreMatchData & { ok: boolean });
 }

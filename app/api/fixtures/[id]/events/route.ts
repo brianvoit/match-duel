@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
+import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -47,13 +48,17 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     return NextResponse.json({ ok: true, available: false, reason: 'not_started', ...base });
   }
 
+  // ── Check cache ───────────────────────────────────────────────────────────
+  const cached = await getCached(id, 'events', fixture.status as never);
+  if (cached) return NextResponse.json({ ok: true, available: true, ...base, ...cached });
+
   const key = serverEnv.API_FOOTBALL_KEY;
   if (!key) return NextResponse.json({ ok: true, available: false, reason: 'no_api_key', ...base });
 
   try {
     const res = await fetch(
       `https://v3.football.api-sports.io/fixtures/events?fixture=${fixture.external_provider_id}`,
-      { headers: { 'x-apisports-key': key }, next: { revalidate: 120 } }
+      { headers: { 'x-apisports-key': key }, cache: 'no-store' }
     );
     const data = await res.json() as {
       response: Array<{
@@ -81,6 +86,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       detail:      e.detail,
     }));
 
+    await setCached(id, 'events', { events } as unknown as Record<string, unknown>);
     return NextResponse.json({ ok: true, available: true, ...base, events } satisfies EventsData & { ok: boolean });
   } catch {
     return NextResponse.json({ ok: true, available: false, reason: 'api_error', ...base });

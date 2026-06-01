@@ -966,7 +966,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               {f.status === 'FINAL' && myPoints !== null && (
                 <div className={`wc-fd-outcome${myPoints > 0 ? ' wc-fd-outcome--scored' : f.homeScore !== null && f.homeScore === f.awayScore ? ' wc-fd-outcome--draw' : ' wc-fd-outcome--missed'}`}>
                   {myPoints > 0
-                    ? `+${myPoints} pts`
+                    ? `Win — +${myPoints} pts`
                     : f.homeScore !== null && f.homeScore === f.awayScore
                       ? 'Draw — 0 pts'
                       : 'Loss — 0 pts'
@@ -1389,16 +1389,74 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     // ── Timeline ────────────────────────────────────────────────────────────
     const timeline = eventsData?.available ? eventsData.events : [];
 
-    function eventIcon(type: string, detail: string): string {
-      if (type === 'Goal') {
-        if (detail.includes('Own')) return '⚽↩';
-        if (detail.includes('Penalty')) return '⚽ (P)';
-        return '⚽';
+    // ── Build enhanced timeline with period markers ────────────────
+    type TLItem = (typeof timeline)[number] & { _periodLabel?: string };
+    const enhancedTimeline: TLItem[] = [];
+    const mkPeriod = (label: string, minute: number): TLItem =>
+      ({ type: 'PERIOD' as unknown as 'Var', _periodLabel: label, player: '', assist: null, detail: label, team: '', minute, extraMinute: null });
+
+    let halfAdded = false, fullAdded = false, et1Added = false;
+
+    enhancedTimeline.push(mkPeriod('Kick Off', 0));
+
+    for (const ev of timeline) {
+      if (!halfAdded && ev.minute > 45 && !ev.extraMinute) { enhancedTimeline.push(mkPeriod('Half Time', 45)); halfAdded = true; }
+      if (!fullAdded && ev.minute > 90 && !ev.extraMinute) { enhancedTimeline.push(mkPeriod('Full Time', 90)); fullAdded = true; }
+      if (!et1Added && ev.minute > 105 && !ev.extraMinute) { enhancedTimeline.push(mkPeriod('End of Extra Time 1', 105)); et1Added = true; }
+      enhancedTimeline.push(ev as TLItem);
+    }
+    if (!halfAdded) enhancedTimeline.push(mkPeriod('Half Time', 45));
+    if (!fullAdded) enhancedTimeline.push(mkPeriod('Full Time', 90));
+
+    function TimelineIcon({ type, detail }: { type: string; detail: string }) {
+      const t = type.toLowerCase();
+      if (t === 'period') {
+        if (detail === 'Kick Off') return (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="5.5" stroke="var(--text-2)" strokeWidth="1.5"/>
+            <path d="M5.5 5 L9 7 L5.5 9 Z" fill="var(--text-2)"/>
+          </svg>
+        );
+        // Whistle for Full Time / End of Extra Time
+        return (
+          <svg width="15" height="13" viewBox="0 0 16 13" fill="none" aria-hidden="true">
+            <circle cx="5.5" cy="6.5" r="4" stroke="var(--text-2)" strokeWidth="1.5"/>
+            <path d="M9.5 4.5 L14 3" stroke="var(--text-2)" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M13.5 2.5 L14.5 2.5 L14.5 4.5 L13.5 4.5" stroke="var(--text-2)" strokeWidth="1.3" strokeLinejoin="round"/>
+            <circle cx="5.5" cy="6.5" r="1.5" fill="var(--text-2)" opacity="0.4"/>
+          </svg>
+        );
       }
-      if (type === 'Card') return detail.includes('Red') ? '🟥' : '🟨';
-      if (type === 'Subst') return '🔄';
-      if (type === 'Var') return 'VAR';
-      return '•';
+      if (t === 'goal') {
+        if (detail.includes('Missed')) return (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M2 2 L10 10 M10 2 L2 10" stroke="var(--danger)" strokeWidth="2.5" strokeLinecap="round"/>
+          </svg>
+        );
+        return <span style={{ fontSize: '1rem', lineHeight: 1 }}>⚽</span>;
+      }
+      if (t === 'card') {
+        const isRed = detail.includes('Red');
+        return (
+          <svg width="10" height="13" viewBox="0 0 10 13" fill="none" aria-hidden="true">
+            <rect x="0.5" y="0.5" width="9" height="12" rx="1.5"
+              fill={isRed ? 'var(--danger)' : 'var(--warn)'} stroke={isRed ? 'var(--danger)' : 'var(--warn)'}/>
+          </svg>
+        );
+      }
+      if (t === 'subst') {
+        return (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            {/* Top arc + arrowhead — green (coming on) */}
+            <path d="M3 8 A5 5 0 0 1 13 8" stroke="var(--ok)" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M11 5.2 L13 8 L10.2 8.8" stroke="var(--ok)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            {/* Bottom arc + arrowhead — red (going off) */}
+            <path d="M13 8 A5 5 0 0 1 3 8" stroke="var(--danger)" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M5 10.8 L3 8 L5.8 7.2" stroke="var(--danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        );
+      }
+      return <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-2)' }}>VAR</span>;
     }
 
     function parseNum(v: number | string | null): number {
@@ -1411,58 +1469,110 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       <div className="wc-recap">
 
         {/* ── Match timeline ──────────────────────────────────────────── */}
-        {timeline.length > 0 && (
-          <div className="wc-timeline">
-            {timeline.map((ev, i) => {
-              const isHome = ev.team === homeTeam;
-              const min = ev.extraMinute ? `${ev.minute}+${ev.extraMinute}'` : `${ev.minute}'`;
-              const isGoal = ev.type === 'Goal';
-              const isCard = ev.type === 'Card';
-              return (
-                <div key={i} className={`wc-timeline-row${isHome ? ' wc-timeline-row--home' : ' wc-timeline-row--away'}`}>
-                  {isHome ? (
-                    <>
-                      <div className="wc-timeline-detail">
-                        <span className={`wc-timeline-player${isGoal ? ' wc-timeline-player--goal' : ''}`}>{ev.player}</span>
-                        {ev.assist && <span className="wc-timeline-assist">↳ {ev.assist}</span>}
-                        {ev.detail.includes('Own') && <span className="wc-timeline-tag">OG</span>}
-                        {ev.detail.includes('Penalty') && !ev.detail.includes('Miss') && <span className="wc-timeline-tag">P</span>}
-                      </div>
-                      <div className={`wc-timeline-icon${isGoal ? ' wc-timeline-icon--goal' : isCard ? ev.detail.includes('Red') ? ' wc-timeline-icon--red' : ' wc-timeline-icon--yellow' : ''}`}>
-                        {ev.type === 'Subst' ? '⇄' : ev.type === 'Goal' ? '⚽' : ev.detail.includes('Red') ? '🟥' : '🟨'}
-                      </div>
-                      <div className="wc-timeline-min">{min}</div>
-                      <div className="wc-timeline-spacer" />
-                    </>
-                  ) : (
-                    <>
-                      <div className="wc-timeline-spacer" />
-                      <div className="wc-timeline-min">{min}</div>
-                      <div className={`wc-timeline-icon${isGoal ? ' wc-timeline-icon--goal' : isCard ? ev.detail.includes('Red') ? ' wc-timeline-icon--red' : ' wc-timeline-icon--yellow' : ''}`}>
-                        {ev.type === 'Subst' ? '⇄' : ev.type === 'Goal' ? '⚽' : ev.detail.includes('Red') ? '🟥' : '🟨'}
-                      </div>
-                      <div className="wc-timeline-detail">
-                        <span className={`wc-timeline-player${isGoal ? ' wc-timeline-player--goal' : ''}`}>{ev.player}</span>
-                        {ev.assist && <span className="wc-timeline-assist">↳ {ev.assist}</span>}
-                        {ev.detail.includes('Own') && <span className="wc-timeline-tag">OG</span>}
-                        {ev.detail.includes('Penalty') && !ev.detail.includes('Miss') && <span className="wc-timeline-tag">P</span>}
-                      </div>
-                    </>
-                  )}
+        {timeline.length > 0 && (() => {
+          // Helper: render a single event row
+          function EventRow({ ev, i }: { ev: TLItem; i: number }) {
+            const t = ev.type.toLowerCase();
+            const isHome      = ev.team === homeTeam;
+            const min         = ev.extraMinute ? `${ev.minute}+${ev.extraMinute}'` : `${ev.minute}'`;
+            const isGoal      = t === 'goal';
+            const isCard      = t === 'card';
+            const isSub       = t === 'subst';
+            const isVar       = t === 'var';
+            const isPenalty   = ev.detail.toLowerCase().includes('penalty');
+            const isMissedPen = (isGoal || isVar) && (ev.detail.includes('Missed') || ev.detail.toLowerCase().includes('saved'));
+            const iconCls     = `wc-timeline-icon${
+              isMissedPen ? ' wc-timeline-icon--red'
+              : isGoal    ? ' wc-timeline-icon--goal'
+              : isCard    ? (ev.detail.includes('Red') ? ' wc-timeline-icon--red' : ' wc-timeline-icon--yellow')
+              : isSub     ? ' wc-timeline-icon--sub'
+              : ''}`;
+            const detail = (
+              <div className="wc-timeline-detail">
+                {isSub ? (
+                  <>
+                    {ev.assist && <span className="wc-timeline-player wc-timeline-player--in">↑ {ev.assist}</span>}
+                    <span className="wc-timeline-player wc-timeline-player--out">↓ {ev.player}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className={`wc-timeline-player${isGoal && !isMissedPen ? ' wc-timeline-player--goal' : isMissedPen ? ' wc-timeline-player--missed' : ''}`}>
+                      {ev.player}
+                      {ev.detail.includes('Own Goal') && <span className="wc-timeline-tag">OG</span>}
+                    </span>
+                    {isPenalty && !ev.detail.includes('Own') && (
+                      <span className={`wc-timeline-event-type${isMissedPen ? ' wc-timeline-event-type--missed' : ''}`}>
+                        {isMissedPen ? 'MISSED PENALTY' : 'PENALTY'}
+                      </span>
+                    )}
+                    {ev.assist && !isPenalty && <span className="wc-timeline-assist">↳ {ev.assist}</span>}
+                  </>
+                )}
+              </div>
+            );
+            return (
+              <div key={i} className="wc-timeline-row">
+                <div className="wc-timeline-side wc-timeline-side--home">
+                  {isHome ? detail : <span className="wc-timeline-min wc-timeline-min--side">{min}</span>}
                 </div>
-              );
-            })}
-          </div>
-        )}
+                <div className="wc-timeline-centre">
+                  <div className={iconCls}><TimelineIcon type={ev.type} detail={ev.detail} /></div>
+                </div>
+                <div className="wc-timeline-side wc-timeline-side--away">
+                  {!isHome ? detail : <span className="wc-timeline-min wc-timeline-min--side">{min}</span>}
+                </div>
+              </div>
+            );
+          }
+
+          // Helper: render a period divider (with icon or text label)
+          function PeriodRow({ ev, i }: { ev: TLItem; i: number }) {
+            const label = ev._periodLabel ?? '';
+            const hasIcon = label === 'Kick Off' || label === 'Full Time'
+              || label === 'End of Extra Time 1' || label === 'End of Extra Time 2';
+            return hasIcon ? (
+              <div key={i} className="wc-timeline-period">
+                <div className="wc-timeline-centre" style={{ gridColumn: 2 }}>
+                  <div className="wc-timeline-icon"><TimelineIcon type="PERIOD" detail={label} /></div>
+                </div>
+              </div>
+            ) : (
+              <div key={i} className="wc-timeline-period">
+                <span className="wc-timeline-period-label">{label}</span>
+              </div>
+            );
+          }
+
+          const first = enhancedTimeline[0];
+          const last  = enhancedTimeline[enhancedTimeline.length - 1];
+          const mid   = enhancedTimeline.slice(1, -1);
+
+          return (
+            <div className="wc-timeline">
+              {/* Kick Off — no line above */}
+              <PeriodRow ev={first} i={0} />
+              {/* Body — dotted line only within this wrapper */}
+              <div className="wc-timeline-body">
+                {mid.map((ev, i) =>
+                  ev.type.toLowerCase() === 'period'
+                    ? <PeriodRow key={i} ev={ev} i={i + 1} />
+                    : <EventRow  key={i} ev={ev} i={i + 1} />
+                )}
+              </div>
+              {/* Full Time whistle — no line below */}
+              {enhancedTimeline.length > 1 && <PeriodRow ev={last} i={enhancedTimeline.length - 1} />}
+            </div>
+          );
+        })()}
 
         {/* ── Team header ──────────────────────────────────────────────── */}
         <div className="wc-recap-header">
-          <span className="wc-recap-team wc-recap-team--home">
+          <h2 className="wc-recap-team wc-recap-team--home">
             {teamFlag(homeTeam ?? '')} {homeTeam}
-          </span>
-          <span className="wc-recap-team wc-recap-team--away">
+          </h2>
+          <h2 className="wc-recap-team wc-recap-team--away">
             {awayTeam} {teamFlag(awayTeam ?? '')}
-          </span>
+          </h2>
         </div>
 
         {/* Stat rows */}
@@ -1482,7 +1592,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   <span className="wc-recap-label">{s.type}</span>
                   <span className="wc-recap-val wc-recap-val--away">{displayAway}</span>
                 </div>
-                <div className="wc-recap-bars">
+                <div className="wc-recap-bars wc-recap-bars--tall">
                   <div className="wc-recap-bar-track wc-recap-bar-track--home">
                     <div className="wc-recap-bar wc-recap-bar--home" style={{ width: `${hPct}%` }} />
                   </div>

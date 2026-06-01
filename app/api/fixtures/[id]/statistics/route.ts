@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
+import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
 import type { RecapData } from '@/app/components/playground-types';
 
 interface RouteContext {
@@ -50,6 +51,10 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     return NextResponse.json({ ok: true, available: false, reason: 'not_final', stats: [] });
   }
 
+  // ── Check cache ───────────────────────────────────────────────────────────
+  const cached = await getCached(id, 'stats', fixture.status as never);
+  if (cached) return NextResponse.json({ ok: true, available: true, ...cached });
+
   const key = serverEnv.API_FOOTBALL_KEY;
   if (!key) {
     return NextResponse.json({ ok: true, available: false, reason: 'no_api_key', stats: [] });
@@ -89,14 +94,9 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       }))
       .filter(s => s.home !== null || s.away !== null);
 
-    const result: RecapData & { ok: boolean } = {
-      ok: true,
-      available: true,
-      homeTeam: homeTeamData.team.name,
-      awayTeam: awayTeamData?.team.name ?? fixture.away_team,
-      stats,
-    };
-    return NextResponse.json(result);
+    const payload = { available: true, homeTeam: homeTeamData.team.name, awayTeam: awayTeamData?.team.name ?? fixture.away_team, stats };
+    await setCached(id, 'stats', payload as unknown as Record<string, unknown>);
+    return NextResponse.json({ ok: true, ...payload } satisfies RecapData & { ok: boolean });
   } catch {
     return NextResponse.json({ ok: true, available: false, reason: 'api_error', stats: [] });
   }

@@ -13,11 +13,6 @@ function oddsToImplied(odd: string): string {
   return `${Math.round((1 / n) * 100)}%`;
 }
 
-function FormBadge({ result }: { result: string }) {
-  const cls = result === 'W' ? 'win' : result === 'L' ? 'loss' : 'draw';
-  return <span className={`wc-pm-form-badge wc-pm-form-badge--${cls}`}>{result}</span>;
-}
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <h3 className="wc-fd-section-label" style={{ marginBottom: 8 }}>{children}</h3>;
 }
@@ -30,7 +25,7 @@ function CompBar({ label, home, away }: { label: string; home: number; away: num
         <span className="wc-pm-comp-label">{label}</span>
         <span className="wc-pm-comp-val wc-pm-comp-val--away">{away}%</span>
       </div>
-      <div className="wc-recap-bars">
+      <div className="wc-recap-bars wc-recap-bars--tall">
         <div className="wc-recap-bar-track wc-recap-bar-track--home">
           <div className="wc-recap-bar wc-recap-bar--home" style={{ width: `${home}%` }} />
         </div>
@@ -43,10 +38,9 @@ function CompBar({ label, home, away }: { label: string; home: number; away: num
 }
 
 export function PreMatchPanel({ data }: PreMatchPanelProps) {
-  const { homeTeam, awayTeam, predictions, standings, homeGoals, awayGoals,
-    injuries, odds, topScorers, comparison } = data;
+  const { homeTeam, awayTeam, predictions, standings, injuries, odds, topScorers, comparison } = data;
 
-  const hasSomething = predictions || standings || homeGoals || injuries || odds || topScorers || comparison;
+  const hasSomething = predictions || standings || injuries || odds || topScorers || comparison;
   if (!hasSomething) return null;
 
   return (
@@ -59,7 +53,7 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
           <div className="wc-pm-prob">
             <div className="wc-pm-prob-team">
               <div className="wc-pm-prob-pct wc-pm-prob-pct--home">{predictions.homePercent}%</div>
-              <div className="wc-pm-prob-name">{teamFlag(homeTeam)} {homeTeam}</div>
+              {/* No name — left = home, right = away */}
             </div>
             <div className="wc-pm-prob-draw">
               <div className="wc-pm-prob-pct wc-pm-prob-pct--draw">{predictions.drawPercent}%</div>
@@ -67,18 +61,15 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
             </div>
             <div className="wc-pm-prob-team">
               <div className="wc-pm-prob-pct wc-pm-prob-pct--away">{predictions.awayPercent}%</div>
-              <div className="wc-pm-prob-name">{awayTeam} {teamFlag(awayTeam)}</div>
             </div>
           </div>
-          {/* Probability bar */}
-          <div className="wc-pm-prob-bar">
+          {/* Probability bar — taller for visibility */}
+          <div className="wc-pm-prob-bar wc-pm-prob-bar--tall">
             <div className="wc-pm-prob-bar-home" style={{ width: `${predictions.homePercent}%` }} />
             <div className="wc-pm-prob-bar-draw" style={{ width: `${predictions.drawPercent}%` }} />
             <div className="wc-pm-prob-bar-away" style={{ flex: 1 }} />
           </div>
-          {predictions.advice && (
-            <p className="wc-pm-advice">💡 {predictions.advice}</p>
-          )}
+          {/* advice removed */}
         </div>
       )}
 
@@ -130,36 +121,7 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
         </div>
       )}
 
-      {/* ── Recent Form & Goals ────────────────────────────────────────── */}
-      {(predictions?.homeForm || homeGoals) && (
-        <div className="wc-fd-section">
-          <SectionLabel>Form &amp; Goals (Last 5)</SectionLabel>
-          <div className="wc-pm-form-rows">
-            {[
-              { team: homeTeam, form: predictions?.homeForm, goals: homeGoals },
-              { team: awayTeam, form: predictions?.awayForm, goals: awayGoals },
-            ].map(({ team, form, goals }) => (
-              <div key={team} className="wc-pm-form-row">
-                <div className="wc-pm-form-team">
-                  {teamFlag(team)}
-                  <span className="wc-pm-form-team-name">{team}</span>
-                </div>
-                <div className="wc-pm-form-badges">
-                  {form ? [...form].slice(-5).map((r, i) => (
-                    <FormBadge key={i} result={r} />
-                  )) : <span className="wc-pm-form-na">—</span>}
-                </div>
-                {goals && (
-                  <div className="wc-pm-form-goals">
-                    <span className="wc-pm-form-goals-for">⚽ {goals.avgFor}</span>
-                    <span className="wc-pm-form-goals-against">🧤 {goals.avgAgainst}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Form & Goals section removed */}
 
       {/* ── Injuries & Suspensions ─────────────────────────────────────── */}
       {injuries && (injuries.home.length > 0 || injuries.away.length > 0) && (
@@ -184,17 +146,14 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
         </div>
       )}
 
-      {/* ── Style Comparison ───────────────────────────────────────────── */}
+      {/* ── Style Comparison — no team labels, side implies team ───────── */}
       {comparison && (
         <div className="wc-fd-section">
           <SectionLabel>Style Comparison</SectionLabel>
-          <div className="wc-pm-comp-header-teams">
-            <span>{teamFlag(homeTeam)} {homeTeam}</span>
-            <span>{awayTeam} {teamFlag(awayTeam)}</span>
-          </div>
-          <CompBar label="Form" home={comparison.form.home} away={comparison.form.away} />
-          <CompBar label="Attack" home={comparison.att.home} away={comparison.att.away} />
-          <CompBar label="Defence" home={comparison.def.home} away={comparison.def.away} />
+          {/* Team labels removed — left = home (blue), right = away (amber) */}
+          <CompBar label="Form"    home={comparison.form.home} away={comparison.form.away} />
+          <CompBar label="Attack"  home={comparison.att.home}  away={comparison.att.away} />
+          <CompBar label="Defence" home={comparison.def.home}  away={comparison.def.away} />
         </div>
       )}
 

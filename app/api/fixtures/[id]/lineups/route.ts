@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
+import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
 import type { TeamLineup, SquadData } from '@/app/components/playground-types';
 
 interface RouteContext {
@@ -43,20 +44,22 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   // Look up the fixture to get its API-Football external ID
   const { data: fixture } = await service
     .from('fixture')
-    .select('external_provider_id, home_team, away_team')
+    .select('external_provider_id, home_team, away_team, status')
     .eq('id', id)
     .maybeSingle() as {
-      data: { external_provider_id: string | null; home_team: string; away_team: string } | null;
+      data: { external_provider_id: string | null; home_team: string; away_team: string; status: string } | null;
     };
 
   if (!fixture?.external_provider_id) {
     return NextResponse.json({ ok: true, available: false, reason: 'no_external_id' } satisfies Partial<SquadData> & { ok: boolean });
   }
 
+  // ── Check cache ───────────────────────────────────────────────────────────
+  const cached = await getCached(id, 'lineup', fixture.status as never);
+  if (cached) return NextResponse.json({ ok: true, available: true, ...cached });
+
   const key = serverEnv.API_FOOTBALL_KEY;
-  if (!key) {
-    return NextResponse.json({ ok: true, available: false, reason: 'no_api_key' });
-  }
+  if (!key) return NextResponse.json({ ok: true, available: false, reason: 'no_api_key' });
 
   try {
     const res = await fetch(
@@ -64,10 +67,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       { headers: { 'x-apisports-key': key }, cache: 'no-store' }
     );
 
-    const data = await res.json() as {
-      response: ApiLineup[];
-      errors?: Record<string, string>;
-    };
+    const data = await res.json() as { response: ApiLineup[]; errors?: Record<string, string> };
 
     if (data.errors && Object.keys(data.errors).length > 0) {
       return NextResponse.json({ ok: true, available: false, reason: 'api_error' });
@@ -81,13 +81,9 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const homeRaw = lineups.find(l => l.team.name === fixture.home_team) ?? lineups[0];
     const awayRaw = lineups.find(l => l.team.name === fixture.away_team) ?? lineups[1] ?? null;
 
-    const result: SquadData & { ok: boolean } = {
-      ok: true,
-      available: true,
-      home: homeRaw ? mapLineup(homeRaw) : null,
-      away: awayRaw ? mapLineup(awayRaw) : null,
-    };
-    return NextResponse.json(result);
+    const payload = { available: true, home: homeRaw ? mapLineup(homeRaw) : null, away: awayRaw ? mapLineup(awayRaw) : null };
+    await setCached(id, 'lineup', payload as unknown as Record<string, unknown>);
+    return NextResponse.json({ ok: true, ...payload });
   } catch {
     return NextResponse.json({ ok: true, available: false, reason: 'api_error' });
   }
