@@ -173,7 +173,7 @@ export function ScoreChartModal({
 
   const W = 520, H = 190, PL = 36, PR = 16, PT = 16, PB = 36;
   const myColor  = 'var(--accent)';
-  const oppColor = '#94a3b8';
+  const oppColor = 'var(--chart-line-opp)';
 
   const pts   = buildChart(W, H, PL, PR, PT, PB, ptsData);
   const goals = buildChart(W, H, PL, PR, PT, PB, goalsData);

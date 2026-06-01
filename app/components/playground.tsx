@@ -11,6 +11,7 @@ import {
   Tournament, Matchup, Round, Fixture,
   ParticipantStanding, RoundResultParticipant, RoundResultEntry,
   TournamentForm, TournamentFormFixture,
+  SquadData,
   ContentTab, DrawerTab, MobileView, NoticeTone,
 } from '@/app/components/playground-types';
 import {
@@ -105,10 +106,13 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
   const swRegistration = useRef<ServiceWorkerRegistration | null>(null);
+  const feedScrollRef = useRef<HTMLDivElement>(null);
   const [headToHead, setHeadToHead] = useState<{ year: number; stage: string; home: string; away: string; homeGoals: number | null; awayGoals: number | null }[]>([]);
   const [h2hHome, setH2hHome] = useState<string>('');
   const [h2hAway, setH2hAway] = useState<string>('');
   const [teamForm, setTeamForm] = useState<TournamentForm | null>(null);
+  const [squadData, setSquadData] = useState<SquadData | null>(null);
+  const [squadLoading, setSquadLoading] = useState(false);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -174,10 +178,16 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
   const oppAvatarUrl = selectedMatchup?.opponentAvatarUrl ?? null;
 
-  const selectedFixture = useMemo(
-    () => fixtures.find((f) => f.id === selectedFixtureId) ?? null,
-    [fixtures, selectedFixtureId]
-  );
+  const selectedFixture = useMemo(() => {
+    if (!selectedFixtureId) return null;
+    const inCurrent = fixtures.find(f => f.id === selectedFixtureId);
+    if (inCurrent) return inCurrent;
+    for (const roundFix of Object.values(completedRoundFixtures)) {
+      const found = roundFix.find(f => f.id === selectedFixtureId);
+      if (found) return found;
+    }
+    return null;
+  }, [fixtures, completedRoundFixtures, selectedFixtureId]);
 
   const pickSummaryStats = useMemo(() => {
     const hasPickOrder = Object.keys(pickOrder).length > 0;
@@ -324,6 +334,28 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       applyThemeClass(saved);
     }
   }, []);
+
+  // Fetch squad lineups when the Squad tab is active
+  useEffect(() => {
+    if (contentTab !== 'squad' || !selectedFixtureId) { setSquadData(null); return; }
+    setSquadLoading(true);
+    setSquadData(null);
+    fetch(`/api/fixtures/${selectedFixtureId}/lineups`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { setSquadData(d); })
+      .catch(() => { setSquadData({ available: false, reason: 'api_error', home: null, away: null }); })
+      .finally(() => setSquadLoading(false));
+  }, [contentTab, selectedFixtureId]);
+
+  // Scroll the fixture feed to show the selected fixture at the top
+  useEffect(() => {
+    if (!selectedFixtureId || !feedScrollRef.current) return;
+    const container = feedScrollRef.current;
+    const el = container.querySelector(`[data-fixture-id="${selectedFixtureId}"]`) as HTMLElement | null;
+    if (!el) return;
+    const offset = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+    container.scrollTo({ top: offset, behavior: 'smooth' });
+  }, [selectedFixtureId]);
 
   // Register service worker and check existing push subscription
   useEffect(() => {
@@ -766,7 +798,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   </span>
                 )}
               </div>
-              <div className="wc-fd-scorebug-name">{f.homeTeam}</div>
+              <h2 className="wc-fd-scorebug-name">{f.homeTeam}</h2>
             </div>
 
             {/* Score center */}
@@ -813,10 +845,13 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   </span>
                 )}
               </div>
-              <div className="wc-fd-scorebug-name">{f.awayTeam}</div>
+              <h2 className="wc-fd-scorebug-name">{f.awayTeam}</h2>
             </div>
           </div>
         </div>
+
+        {/* ── Detail body — centred 3/5 on desktop ─────────────────── */}
+        <div className="wc-fd-detail-body">
 
         {/* Pick section */}
         {(() => {
@@ -829,19 +864,23 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             <>
               {/* Pick action area */}
               <div className="wc-fd-section">
-                <div className="wc-fd-section-label">Who will win?</div>
+                <h3 className="wc-fd-section-label">Who will win?</h3>
 
                 {f.isLocked ? (
-                  /* Post-kickoff: show assigned picks as plain text */
+                  /* Post-kickoff: show picks with chose/assigned context */
                   <div className="wc-fd-locked-picks">
                     <div className="wc-fd-locked-pick">
-                      <span className="wc-fd-locked-pick-you">You</span>
+                      <span className="wc-fd-locked-pick-you">
+                        {iAmFirstPicker ? 'You Chose' : 'You Were Assigned'}
+                      </span>
                       <span className="wc-fd-locked-pick-team">
                         {myEffectivePick ? (myEffectivePick === 'HOME' ? f.homeTeam : f.awayTeam) : '—'}
                       </span>
                     </div>
                     <div className="wc-fd-locked-pick">
-                      <span className="wc-fd-locked-pick-you">Opponent</span>
+                      <span className="wc-fd-locked-pick-you">
+                        {iAmFirstPicker ? 'Opponent Was Assigned' : 'Opponent Chose'}
+                      </span>
                       <span className="wc-fd-locked-pick-team">
                         {oppEffectivePick ? (oppEffectivePick === 'HOME' ? f.homeTeam : f.awayTeam) : '—'}
                       </span>
@@ -850,7 +889,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 ) : iAmFirstPicker ? (
                   /* First picker: dropdown + save */
                   <>
-                    <p className="wc-pick-hint" style={{ margin: '0 0 6px' }}>You pick first — opponent is assigned the other team.</p>
                     <select
                       className="wc-select"
                       value={pickMap[f.id] ?? ''}
@@ -881,7 +919,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   <div className="wc-fd-assigned">
                     <span className="wc-fd-assigned-flag">{teamFlag(myEffectivePick === 'HOME' ? f.homeTeam : f.awayTeam)}</span>
                     <div>
-                      <div className="wc-fd-assigned-label">You&apos;ve been assigned</div>
+                      <div className="wc-fd-assigned-label">You&apos;ve Been Assigned</div>
                       <div className="wc-fd-assigned-team">{myEffectivePick === 'HOME' ? f.homeTeam : f.awayTeam}</div>
                     </div>
                   </div>
@@ -895,8 +933,13 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
               {/* Points outcome */}
               {f.status === 'FINAL' && myPoints !== null && (
-                <div className={`wc-fd-outcome${myPoints > 0 ? ' wc-fd-outcome--scored' : ' wc-fd-outcome--missed'}`}>
-                  {myPoints > 0 ? `+${myPoints} pts` : 'Missed — 0 pts'}
+                <div className={`wc-fd-outcome${myPoints > 0 ? ' wc-fd-outcome--scored' : f.homeScore !== null && f.homeScore === f.awayScore ? ' wc-fd-outcome--draw' : ' wc-fd-outcome--missed'}`}>
+                  {myPoints > 0
+                    ? `+${myPoints} pts`
+                    : f.homeScore !== null && f.homeScore === f.awayScore
+                      ? 'Draw — 0 pts'
+                      : 'Loss — 0 pts'
+                  }
                 </div>
               )}
             </>
@@ -921,7 +964,23 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             });
 
             return (
-              <div key={fc.id} className="wc-scorebug wc-scorebug--locked" style={{ cursor: 'default' }}>
+              <button
+                key={fc.id}
+                className="wc-scorebug"
+                onClick={() => {
+                  setSelectedFixtureId(fc.id);
+                  setHeadToHead([]);
+                  setTeamForm(null);
+                  fetch(`/api/fixtures/${fc.id}/head-to-head`)
+                    .then(r => r.json())
+                    .then(d => { setHeadToHead(d.meetings ?? []); setH2hHome(d.home ?? ''); setH2hAway(d.away ?? ''); })
+                    .catch(() => {});
+                  const url = selectedMatchupId
+                    ? `/api/fixtures/${fc.id}/form?matchupId=${selectedMatchupId}`
+                    : `/api/fixtures/${fc.id}/form`;
+                  fetch(url).then(r => r.json()).then(d => { if (d.ok) setTeamForm(d); }).catch(() => {});
+                }}
+              >
                 {fc.groupName && (
                   <div className="wc-scorebug-group">
                     <span>Group {fc.groupName}</span>
@@ -991,7 +1050,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                     )}
                   </div>
                 </div>
-              </div>
+              </button>
             );
           }
 
@@ -999,7 +1058,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             <>
               {teamForm.homeFixtures.length > 0 && (
                 <div className="wc-fd-section">
-                  <div className="wc-fd-section-label">{teamForm.homeTeam} this tournament</div>
+                  <h3 className="wc-fd-section-label">{teamForm.homeTeam}</h3>
                   <div className="wc-form-list">
                     {teamForm.homeFixtures.map(renderFormCard)}
                   </div>
@@ -1007,7 +1066,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               )}
               {teamForm.awayFixtures.length > 0 && (
                 <div className="wc-fd-section">
-                  <div className="wc-fd-section-label">{teamForm.awayTeam} this tournament</div>
+                  <h3 className="wc-fd-section-label">{teamForm.awayTeam}</h3>
                   <div className="wc-form-list">
                     {teamForm.awayFixtures.map(renderFormCard)}
                   </div>
@@ -1020,7 +1079,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         {/* Previous World Cup Meetings */}
         {headToHead.length > 0 && (
           <div className="wc-fd-section">
-            <div className="wc-fd-section-label">Previous World Cup Meetings</div>
+            <h3 className="wc-fd-section-label">Previous Meetings</h3>
             <div className="wc-h2h-history">
               {headToHead.map((m, i) => {
                 const isH2hHomeFixtureHome = m.home === h2hHome;
@@ -1042,6 +1101,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             </div>
           </div>
         )}
+
+        </div>{/* /wc-fd-detail-body */}
       </div>
     );
   }
@@ -1149,15 +1210,103 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         </div>
       );
     }
+
+    if (squadLoading) {
+      return (
+        <div className="wc-content-empty">
+          <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>Loading lineups…</p>
+        </div>
+      );
+    }
+
+    if (!squadData || !squadData.available) {
+      const msg = !squadData || squadData.reason === 'not_yet_available'
+        ? 'Lineups are confirmed approximately 1 hour before kickoff.'
+        : squadData.reason === 'no_external_id'
+          ? 'Lineup data will be available once fixtures are synced from API-Football.'
+          : 'Lineup data unavailable for this fixture.';
+      return (
+        <div className="wc-content-empty">
+          <p style={{ fontWeight: 700, margin: '0 0 6px' }}>
+            {selectedFixture.homeTeam} vs {selectedFixture.awayTeam}
+          </p>
+          <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>{msg}</p>
+        </div>
+      );
+    }
+
+    function renderLineup(lineup: NonNullable<SquadData['home']>) {
+      // Group starters by grid row
+      const rows = new Map<number, typeof lineup.starters>();
+      for (const p of lineup.starters) {
+        const row = p.grid ? parseInt(p.grid.split(':')[0]) : 99;
+        if (!rows.has(row)) rows.set(row, []);
+        rows.get(row)!.push(p);
+      }
+      // Sort within each row by column
+      for (const [, players] of rows) {
+        players.sort((a, b) => {
+          const ca = a.grid ? parseInt(a.grid.split(':')[1]) : 0;
+          const cb = b.grid ? parseInt(b.grid.split(':')[1]) : 0;
+          return ca - cb;
+        });
+      }
+      const sortedRows = [...rows.entries()].sort(([a], [b]) => b - a); // GK (row 1) at bottom
+
+      return (
+        <div className="wc-squad-team">
+          <div className="wc-squad-team-header">
+            <span className="wc-squad-team-flag">{teamFlag(lineup.teamName)}</span>
+            <div>
+              <h3 className="wc-squad-team-name">{lineup.teamName}</h3>
+              <span className="wc-squad-formation">{lineup.formation}</span>
+            </div>
+          </div>
+
+          {/* Formation rows — GK at bottom */}
+          <div className="wc-squad-pitch">
+            {sortedRows.map(([rowNum, players]) => (
+              <div key={rowNum} className="wc-squad-row">
+                {players.map(p => (
+                  <div key={p.number} className="wc-squad-player">
+                    <div className={`wc-squad-player-num wc-squad-player-num--${p.pos.toLowerCase()}`}>
+                      {p.number}
+                    </div>
+                    <div className="wc-squad-player-name">
+                      {p.name.split(' ').pop()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Substitutes */}
+          {lineup.substitutes.length > 0 && (
+            <div className="wc-squad-subs">
+              <div className="wc-squad-subs-label">Substitutes</div>
+              <div className="wc-squad-subs-list">
+                {lineup.substitutes.map(p => (
+                  <div key={p.number} className="wc-squad-sub">
+                    <span className="wc-squad-sub-num">{p.number}</span>
+                    <span className="wc-squad-sub-name">{p.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {lineup.coachName && (
+            <div className="wc-squad-coach">Coach: {lineup.coachName}</div>
+          )}
+        </div>
+      );
+    }
+
     return (
-      <div className="wc-content-empty">
-        <p style={{ fontSize: '1.8rem' }}>🏃</p>
-        <p style={{ fontWeight: 700, margin: 0 }}>
-          {selectedFixture.homeTeam} vs {selectedFixture.awayTeam}
-        </p>
-        <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
-          Squad lineups will appear here once confirmed — typically 1 hour before kickoff.
-        </p>
+      <div className="wc-squad">
+        {squadData.home && renderLineup(squadData.home)}
+        {squadData.away && renderLineup(squadData.away)}
       </div>
     );
   }
@@ -1549,7 +1698,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             </div>
           </div>
 
-          <div className="wc-feed-scroll">
+          <div className="wc-feed-scroll" ref={feedScrollRef}>
             {allRounds.length === 0 && !loading ? (
               <div className="wc-feed-empty">
                 <p className="wc-subtitle">No fixtures for the current round.</p>
@@ -1569,7 +1718,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   <div key={round.id} className="wc-round-section">
                     {/* Sticky round header */}
                     <div className="wc-round-section-header">
-                      <span className="wc-round-section-title">{fmtStage(round.stage)}</span>
+                      <h2 className="wc-round-section-title">{fmtStage(round.stage)}</h2>
                       {round.starts_at && (
                         <span className="wc-round-section-date">
                           {new Date(round.starts_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
@@ -1591,6 +1740,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                       </div>
                     ) : (() => {
                         let lastDateStr = '';
+                        let matchdayNum = 0;
                         return roundFixtures.map((f) => {
                           const isSelected = f.id === selectedFixtureId;
                           const myPick = pickMap[f.id] ?? f.myPickSide ?? null;
@@ -1602,13 +1752,11 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                             weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC',
                           });
                           const showDateHeader = thisDateStr !== lastDateStr;
-                          if (showDateHeader) lastDateStr = thisDateStr;
+                          if (showDateHeader) { lastDateStr = thisDateStr; matchdayNum++; }
 
                           // Format kickoff time: "Jun 11 · 3:00 PM"
                           const kickoffDate = new Date(f.startsAt);
                           const kickoffLabel = kickoffDate.toLocaleString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
                             hour: 'numeric',
                             minute: '2-digit',
                             timeZone: 'UTC'
@@ -1617,10 +1765,14 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                           return (
                             <div key={f.id}>
                               {showDateHeader && (
-                                <div className="wc-matchday-header">{thisDateStr}</div>
+                                <div className="wc-matchday-header">
+                                  <span>Matchday {matchdayNum}</span>
+                                  <span className="wc-matchday-header-date">{thisDateStr}</span>
+                                </div>
                               )}
                               <button
-                                className={`wc-scorebug${isSelected ? ' wc-scorebug--selected' : ''}${f.isLocked ? ' wc-scorebug--locked' : ''}${!f.isLocked && !isMyFixture ? ' wc-scorebug--not-mine' : ''}`}
+                                className={`wc-scorebug${isSelected ? ' wc-scorebug--selected' : ''}${f.isLocked ? ' wc-scorebug--locked' : ''}${!f.isLocked && !isMyFixture ? ' wc-scorebug--not-mine' : ''}${f.status === 'FINAL' && myPick ? (f.homeScore !== null && f.homeScore === f.awayScore ? ' wc-scorebug--draw' : (pts ?? 0) > 0 ? ' wc-scorebug--win' : ' wc-scorebug--loss') : ''}`}
+                                data-fixture-id={f.id}
                                 aria-current={isSelected ? 'true' : undefined}
                                 onClick={() => {
                                   setSelectedFixtureId(f.id);
@@ -1665,7 +1817,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                                     {/* Left pts — home side picker */}
                                     <div className="wc-scorebug-pts">
                                       {isFinal && homePickExists && homePts !== null && homePts > 0 && (
-                                        <span className="wc-scorebug-pts-val">+{homePts}</span>
+                                        <span className={`wc-scorebug-pts-val${myPick !== 'HOME' ? ' wc-scorebug-pts-val--opp' : ''}`}>+{homePts}</span>
                                       )}
                                     </div>
 
@@ -1727,7 +1879,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                                     {/* Right pts — away side picker */}
                                     <div className="wc-scorebug-pts">
                                       {isFinal && awayPickExists && awayPts !== null && awayPts > 0 && (
-                                        <span className="wc-scorebug-pts-val">+{awayPts}</span>
+                                        <span className={`wc-scorebug-pts-val${myPick !== 'AWAY' ? ' wc-scorebug-pts-val--opp' : ''}`}>+{awayPts}</span>
                                       )}
                                     </div>
                                   </div>

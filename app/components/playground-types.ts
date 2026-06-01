@@ -90,6 +90,28 @@ export type TournamentForm = {
   awayFixtures: TournamentFormFixture[];
 };
 
+export type LineupPlayer = {
+  name: string;
+  number: number;
+  pos: string;    // 'G' | 'D' | 'M' | 'F'
+  grid: string | null; // "row:col" e.g. "2:3"
+};
+
+export type TeamLineup = {
+  teamName: string;
+  formation: string;   // e.g. "4-3-3"
+  coachName: string | null;
+  starters: LineupPlayer[];
+  substitutes: LineupPlayer[];
+};
+
+export type SquadData = {
+  available: boolean;
+  reason?: 'not_yet_available' | 'no_external_id' | 'no_api_key' | 'api_error';
+  home: TeamLineup | null;
+  away: TeamLineup | null;
+};
+
 export type ContentTab = 'details' | 'squad' | 'recap';
 export type DrawerTab = 'chat' | 'calendar' | 'tv';
 export type MobileView = 'feed' | 'content';
