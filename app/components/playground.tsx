@@ -11,7 +11,7 @@ import {
   Tournament, Matchup, Round, Fixture,
   ParticipantStanding, RoundResultParticipant, RoundResultEntry,
   TournamentForm, TournamentFormFixture,
-  SquadData,
+  SquadData, RecapData,
   ContentTab, DrawerTab, MobileView, NoticeTone,
 } from '@/app/components/playground-types';
 import {
@@ -113,6 +113,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [teamForm, setTeamForm] = useState<TournamentForm | null>(null);
   const [squadData, setSquadData] = useState<SquadData | null>(null);
   const [squadLoading, setSquadLoading] = useState(false);
+  const [recapData, setRecapData] = useState<RecapData | null>(null);
+  const [recapLoading, setRecapLoading] = useState(false);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -345,6 +347,18 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       .then(d => { setSquadData(d); })
       .catch(() => { setSquadData({ available: false, reason: 'api_error', home: null, away: null }); })
       .finally(() => setSquadLoading(false));
+  }, [contentTab, selectedFixtureId]);
+
+  // Fetch match statistics when the Recap tab is active
+  useEffect(() => {
+    if (contentTab !== 'recap' || !selectedFixtureId) { setRecapData(null); return; }
+    setRecapLoading(true);
+    setRecapData(null);
+    fetch(`/api/fixtures/${selectedFixtureId}/statistics`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { setRecapData(d); })
+      .catch(() => { setRecapData({ available: false, reason: 'api_error', homeTeam: null, awayTeam: null, stats: [] }); })
+      .finally(() => setRecapLoading(false));
   }, [contentTab, selectedFixtureId]);
 
   // Scroll the fixture feed to show the selected fixture at the top
@@ -1311,7 +1325,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     );
   }
 
-  // ── Render: Game Recap tab ─────────────────────────────────────────────────
+  // ── Render: Recap tab ─────────────────────────────────────────────────────
 
   function renderRecap() {
     if (!selectedFixture) {
@@ -1321,25 +1335,84 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         </div>
       );
     }
-    if (selectedFixture.status !== 'FINAL') {
+    if (selectedFixture.status !== 'FINAL' && selectedFixture.status !== 'LIVE') {
       return (
         <div className="wc-content-empty">
-          <p style={{ fontSize: '1.8rem' }}>⏱</p>
           <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
-            Game recap will be available after the match ends.
+            Stats will be available once the match is underway.
           </p>
         </div>
       );
     }
+    if (recapLoading) {
+      return (
+        <div className="wc-content-empty">
+          <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>Loading stats…</p>
+        </div>
+      );
+    }
+    if (!recapData?.available) {
+      const msg = !recapData || recapData.reason === 'no_stats'
+        ? 'Match stats are not yet available.'
+        : recapData.reason === 'no_external_id'
+          ? 'Stats will be available once fixtures are synced from API-Football.'
+          : 'Stats unavailable for this fixture.';
+      return (
+        <div className="wc-content-empty">
+          <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>{msg}</p>
+        </div>
+      );
+    }
+
+    const { homeTeam, awayTeam, stats } = recapData;
+
+    function parseNum(v: number | string | null): number {
+      if (v === null || v === undefined) return 0;
+      if (typeof v === 'number') return v;
+      return parseFloat(String(v).replace('%', '')) || 0;
+    }
+
     return (
-      <div className="wc-content-empty">
-        <p style={{ fontSize: '1.8rem' }}>📰</p>
-        <p style={{ fontWeight: 700, margin: 0 }}>
-          {selectedFixture.homeTeam} {selectedFixture.homeScore} – {selectedFixture.awayScore} {selectedFixture.awayTeam}
-        </p>
-        <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
-          Full match recap — coming soon.
-        </p>
+      <div className="wc-recap">
+        {/* Team header */}
+        <div className="wc-recap-header">
+          <span className="wc-recap-team wc-recap-team--home">
+            {teamFlag(homeTeam ?? '')} {homeTeam}
+          </span>
+          <span className="wc-recap-team wc-recap-team--away">
+            {awayTeam} {teamFlag(awayTeam ?? '')}
+          </span>
+        </div>
+
+        {/* Stat rows */}
+        <div className="wc-recap-stats">
+          {stats.map(s => {
+            const hVal = parseNum(s.home);
+            const aVal = parseNum(s.away);
+            const total = hVal + aVal || 1;
+            const hPct = Math.round((hVal / total) * 100);
+            const aPct = 100 - hPct;
+            const displayHome = s.home === null ? '—' : String(s.home);
+            const displayAway = s.away === null ? '—' : String(s.away);
+            return (
+              <div key={s.type} className="wc-recap-row">
+                <div className="wc-recap-row-header">
+                  <span className="wc-recap-val wc-recap-val--home">{displayHome}</span>
+                  <span className="wc-recap-label">{s.type}</span>
+                  <span className="wc-recap-val wc-recap-val--away">{displayAway}</span>
+                </div>
+                <div className="wc-recap-bars">
+                  <div className="wc-recap-bar-track wc-recap-bar-track--home">
+                    <div className="wc-recap-bar wc-recap-bar--home" style={{ width: `${hPct}%` }} />
+                  </div>
+                  <div className="wc-recap-bar-track wc-recap-bar-track--away">
+                    <div className="wc-recap-bar wc-recap-bar--away" style={{ width: `${aPct}%` }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -1929,7 +2002,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 aria-pressed={contentTab === 'recap'}
                 onClick={() => setContentTab('recap')}
               >
-                Game Recap
+                Recap
               </button>
             </div>
           </div>

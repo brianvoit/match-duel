@@ -90,6 +90,20 @@ export type TournamentForm = {
   awayFixtures: TournamentFormFixture[];
 };
 
+export type StatRow = {
+  type: string;
+  home: number | string | null;
+  away: number | string | null;
+};
+
+export type RecapData = {
+  available: boolean;
+  reason?: 'no_external_id' | 'no_api_key' | 'not_final' | 'no_stats' | 'api_error';
+  homeTeam: string | null;
+  awayTeam: string | null;
+  stats: StatRow[];
+};
+
 export type LineupPlayer = {
   name: string;
   number: number;
