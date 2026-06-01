@@ -324,6 +324,193 @@ select {
   color: var(--text-2);
 }
 
+/* ── Invite page ─────────────────────────────────────────────────────────── */
+
+.wc-invite-page {
+  min-height: 100vh;
+  background: var(--bg-grad);
+  display: flex;
+  flex-direction: column;
+}
+
+.wc-invite-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px 40px;
+}
+
+.wc-invite-card {
+  width: min(480px, 100%);
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 28px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-shadow: var(--shadow);
+}
+
+/* Challenger header */
+.wc-invite-challenger {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.wc-invite-avatar {
+  flex-shrink: 0;
+}
+
+.wc-invite-avatar-img {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.wc-invite-avatar-init {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wc-invite-title {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text-0);
+  line-height: 1.2;
+}
+
+.wc-invite-sub {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+/* How it works */
+.wc-invite-how {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 18px 0;
+}
+
+.wc-invite-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.wc-invite-step-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.wc-invite-step strong {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-0);
+  margin-bottom: 2px;
+}
+
+.wc-invite-step p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-1);
+  line-height: 1.45;
+}
+
+/* CTA */
+.wc-invite-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.wc-invite-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-2);
+}
+
+.wc-invite-footer {
+  margin-top: 24px;
+  font-size: 0.72rem;
+  color: var(--text-2);
+  text-align: center;
+}
+
+/* ── Onboarding overlay ───────────────────────────────────────────────────── */
+
+.wc-onboarding {
+  text-align: center;
+  padding: 32px 28px 24px;
+}
+
+.wc-onboarding-progress {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 24px;
+}
+
+.wc-onboarding-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: background 0.2s;
+}
+
+.wc-onboarding-dot--done {
+  background: var(--accent);
+}
+
+.wc-onboarding-icon {
+  font-size: 2.8rem;
+  margin-bottom: 16px;
+  line-height: 1;
+}
+
+.wc-onboarding-title {
+  margin: 0 0 10px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text-0);
+}
+
+.wc-onboarding-body {
+  margin: 0 0 24px;
+  font-size: 0.88rem;
+  color: var(--text-1);
+  line-height: 1.55;
+}
+
+.wc-onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
 /* Large button variant */
 .wc-btn-lg {
   padding: 14px 32px;

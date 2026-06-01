@@ -41,7 +41,15 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/play', requestUrl.origin));
   }
 
-  // Check beta cookie
+  const appUser = await ensureAppUser(user);
+
+  // Invite-link sign-ins bypass the beta gate — the invite IS the access credential
+  if (inviteCode) {
+    await acceptMatchupInvite(inviteCode, appUser.id);
+    return NextResponse.redirect(new URL('/play?onboarding=1', requestUrl.origin));
+  }
+
+  // Regular beta cookie check
   const store = await cookies();
   const betaSession = store.get('beta_session')?.value;
   const betaCode = serverEnv.BETA_CODE;
@@ -52,11 +60,6 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/?error=no_access', requestUrl.origin));
   }
 
-  const appUser = await ensureAppUser(user);
-
-  if (inviteCode) {
-    await acceptMatchupInvite(inviteCode, appUser.id);
-  }
-
-  return NextResponse.redirect(new URL('/play', requestUrl.origin));
+  const isNew = !appUser.display_name; // no display name = first time
+  return NextResponse.redirect(new URL(isNew ? '/play?onboarding=1' : '/play', requestUrl.origin));
 }

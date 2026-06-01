@@ -103,6 +103,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [defaultPickSide, setDefaultPickSide] = useState<'HOME' | 'AWAY'>('HOME');
   const [savingDefaultPick, setSavingDefaultPick] = useState(false);
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>('system');
+  const [onboardingStep, setOnboardingStep] = useState<number | null>(null); // null = hidden
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
@@ -330,6 +331,15 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentTab, selectedMatchupId, hasLiveFixtures]);
+
+  // Show onboarding for new users arriving from invite link or first sign-in
+  useEffect(() => {
+    const seen = localStorage.getItem('md_onboarding_v1');
+    if (!seen) {
+      const isOnboarding = new URLSearchParams(window.location.search).get('onboarding') === '1';
+      if (isOnboarding) setOnboardingStep(1);
+    }
+  }, []);
 
   // Apply persisted theme on mount
   useEffect(() => {
@@ -2590,6 +2600,67 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           </div>
         </div>
       )}
+
+      {/* ── Onboarding overlay ─────────────────────────────────────────── */}
+      {onboardingStep !== null && (() => {
+        const steps = [
+          {
+            icon: '🔄',
+            title: 'You alternate picks',
+            body: 'For every fixture, one of you picks a team — your opponent is automatically assigned the other side. You can never root for the same team.',
+          },
+          {
+            icon: '📉',
+            title: 'The loser picks first',
+            body: 'After each round, the player who scored fewer points gets first pick in the next stage. It\'s a built-in comeback mechanic — every round is winnable.',
+          },
+          {
+            icon: '📈',
+            title: 'Points escalate every round',
+            body: 'Group stage picks are worth 1pt. By the Final it\'s 32pts. A single correct Final pick can overturn an entire group stage deficit.',
+          },
+        ];
+        const step = steps[onboardingStep - 1];
+        const isLast = onboardingStep === steps.length;
+
+        function dismiss() {
+          localStorage.setItem('md_onboarding_v1', 'done');
+          setOnboardingStep(null);
+          // Clean up the ?onboarding=1 param from the URL
+          const url = new URL(window.location.href);
+          url.searchParams.delete('onboarding');
+          window.history.replaceState({}, '', url.toString());
+        }
+
+        return (
+          <div className="wc-modal-backdrop" role="dialog" aria-modal="true" aria-label="How it works">
+            <div className="wc-modal wc-onboarding">
+              <div className="wc-onboarding-progress">
+                {steps.map((_, i) => (
+                  <div key={i} className={`wc-onboarding-dot${i < onboardingStep ? ' wc-onboarding-dot--done' : ''}`} />
+                ))}
+              </div>
+              <div className="wc-onboarding-icon">{step.icon}</div>
+              <h2 className="wc-onboarding-title">{step.title}</h2>
+              <p className="wc-onboarding-body">{step.body}</p>
+              <div className="wc-onboarding-actions">
+                {!isLast ? (
+                  <button className="wc-btn wc-btn-primary" onClick={() => setOnboardingStep(s => (s ?? 1) + 1)}>
+                    Next →
+                  </button>
+                ) : (
+                  <button className="wc-btn wc-btn-primary" onClick={dismiss}>
+                    Let&apos;s go!
+                  </button>
+                )}
+                <button className="wc-btn" onClick={dismiss} style={{ fontSize: '0.78rem' }}>
+                  Skip
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
