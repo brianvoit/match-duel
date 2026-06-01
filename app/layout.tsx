@@ -3,12 +3,12 @@ import { ReactNode } from 'react';
 import '@/app/globals.css';
 
 export const metadata: Metadata = {
-  title: "World Cup Pick'Em '26",
-  description: 'Head-to-head FIFA World Cup 2026 prediction game. Pick match winners, earn points, beat your friend.',
+  title: 'Match Duel',
+  description: 'Head-to-head World Cup prediction game. Draft teams, earn points, beat your friend.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    title: "Pick'Em",
+    title: 'Match Duel',
     statusBarStyle: 'default',
   },
   icons: {
@@ -27,7 +27,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         {/* iOS PWA — must be explicit meta tags, Next.js metadata API doesn't cover all of them */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-title" content="Pick'Em" />
+        <meta name="apple-mobile-web-app-title" content="Match Duel" />
         <link rel="apple-touch-icon" href="/icon.svg" />
       </head>
       <body>{children}</body>

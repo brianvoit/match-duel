@@ -77,7 +77,7 @@ function buildEvent(fixture: IcsFixture, dtstamp: string): string {
 }
 
 /** Build a complete VCALENDAR string for one or more fixtures */
-export function buildIcs(fixtures: IcsFixture[], calName = "World Cup Pick'Em"): string {
+export function buildIcs(fixtures: IcsFixture[], calName = 'Match Duel'): string {
   const dtstamp = icsDate(new Date());
 
   const events = fixtures.map((f) => buildEvent(f, dtstamp)).join('\r\n');
@@ -85,7 +85,7 @@ export function buildIcs(fixtures: IcsFixture[], calName = "World Cup Pick'Em"):
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    `PRODID:-//World Cup Pick'Em//EN`,
+    'PRODID:-//Match Duel//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${esc(calName)}`,

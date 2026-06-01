@@ -13,8 +13,8 @@
   <polyline points="282,220 318,246 306,294 256,310 206,294 194,246 230,220" fill="none" stroke="#0d1a2f" stroke-width="8" stroke-linejoin="round"/>
   <!-- Outer circle border -->
   <circle cx="256" cy="248" r="148" fill="none" stroke="#0d1a2f" stroke-width="8" opacity="0.15"/>
-  <!-- Year badge -->
-  <text x="256" y="382" font-family="'Helvetica Neue',Arial,sans-serif" font-size="52" font-weight="800" fill="white" text-anchor="middle" letter-spacing="2">
-    '26
+  <!-- App badge -->
+  <text x="256" y="382" font-family="'Helvetica Neue',Arial,sans-serif" font-size="58" font-weight="800" fill="white" text-anchor="middle" letter-spacing="1">
+    MD
   </text>
 </svg>

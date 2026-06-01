@@ -26,14 +26,14 @@ export default async function HomePage({ searchParams }: PageProps) {
 
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
       <nav className="wc-landing-nav">
-        <span className="wc-landing-nav-logo">⚽ Pick&apos;Em</span>
+        <span className="wc-landing-nav-logo">⚽ Match Duel</span>
       </nav>
 
       {/* ── Hero ────────────────────────────────────────────────────────── */}
       <section className="wc-landing-hero">
         <div className="wc-landing-ball">⚽</div>
         <h1 className="wc-landing-title">
-          World Cup<br />Pick&apos;Em &lsquo;26
+          Match Duel<br /><span style={{ fontSize: '0.55em', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', opacity: 0.6 }}>FIFA World Cup &lsquo;26</span>
         </h1>
         {noAccess ? (
           <p className="wc-landing-sub" style={{ color: '#ef4444' }}>

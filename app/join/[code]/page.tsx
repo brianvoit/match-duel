@@ -31,7 +31,7 @@ export default async function JoinPage({ params }: PageProps) {
   return (
     <div className="wc-landing">
       <nav className="wc-landing-nav">
-        <span className="wc-landing-nav-logo">⚽ Pick&apos;Em</span>
+        <span className="wc-landing-nav-logo">⚽ Match Duel</span>
       </nav>
 
       <section className="wc-landing-hero">
@@ -41,7 +41,7 @@ export default async function JoinPage({ params }: PageProps) {
         </h1>
         <p className="wc-landing-sub">
           <strong>{creatorName}</strong> has challenged you to a<br />
-          head-to-head World Cup Pick&apos;Em duel.
+          head-to-head Match Duel on the FIFA World Cup &lsquo;26.
         </p>
         <p className="wc-landing-sub" style={{ fontSize: '0.9rem', opacity: 0.7 }}>
           Take turns claiming teams on every match. The one who calls more winners takes the cup.

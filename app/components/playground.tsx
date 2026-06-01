@@ -1517,12 +1517,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             aria-expanded={tournamentMenuOpen}
             aria-label="Switch tournament"
           >
-            <span className="wc-topbar-brand-name">
-              {tournamentLabel.split("'")[0].trim()}
-            </span>
-            <span className="wc-topbar-brand-year">
-              &apos;{tournamentLabel.split("'")[1] ?? '26'}
-            </span>
+            <span className="wc-topbar-brand-name">Match Duel</span>
+            <span className="wc-topbar-brand-sub">{tournamentLabel}</span>
             <span className="wc-topbar-brand-chevron">▾</span>
           </button>
 
@@ -1686,7 +1682,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                       className="wc-dropdown-item"
                       role="menuitem"
                       href={`/api/calendar/matchup/${selectedMatchupId}/all`}
-                      download="world-cup-pickem-2026.ics"
+                      download="match-duel-2026.ics"
                       onClick={() => setUserMenuOpen(false)}
                     >
                       Download All Fixtures

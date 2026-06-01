@@ -1,7 +1,7 @@
 {
-  "name": "World Cup Pick'Em '26",
-  "short_name": "Pick'Em",
-  "description": "Head-to-head FIFA World Cup 2026 prediction game. Pick match winners, earn points, beat your friend.",
+  "name": "Match Duel",
+  "short_name": "Match Duel",
+  "description": "Head-to-head World Cup prediction game. Draft teams, earn points, beat your friend.",
   "start_url": "/play",
   "scope": "/",
   "display": "standalone",

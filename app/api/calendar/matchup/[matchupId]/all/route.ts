@@ -79,13 +79,13 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     };
   });
 
-  const ics = buildIcs(icsFixtures, "World Cup Pick'Em 2026");
+  const ics = buildIcs(icsFixtures, 'Match Duel – FIFA World Cup 2026');
 
   return new NextResponse(ics, {
     status: 200,
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
-      'Content-Disposition': `attachment; filename="world-cup-pickem-2026.ics"`,
+      'Content-Disposition': `attachment; filename="match-duel-2026.ics"`,
       'Cache-Control': 'no-store',
     },
   });
