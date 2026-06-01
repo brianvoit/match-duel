@@ -143,6 +143,28 @@ export type PreMatchData = {
 
 // ── Match statistics (Recap tab) ───────────────────────────────────────────────
 
+// ── Match events (timeline) ────────────────────────────────────────────────────
+
+export type MatchEvent = {
+  minute: number;
+  extraMinute: number | null;
+  team: string;
+  player: string;
+  assist: string | null;
+  type: 'Goal' | 'Card' | 'Subst' | 'Var';
+  detail: string;
+};
+
+export type EventsData = {
+  available: boolean;
+  reason?: string;
+  homeTeam: string;
+  awayTeam: string;
+  events: MatchEvent[];
+};
+
+// ── Match statistics (Recap tab) ───────────────────────────────────────────────
+
 export type StatRow = {
   type: string;
   home: number | string | null;

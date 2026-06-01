@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { TEAM_INFO, teamCode, teamFlag } from '@/lib/data/teamInfo';
 import { ChatPanel } from '@/app/components/chat-panel';
@@ -12,7 +12,7 @@ import {
   Tournament, Matchup, Round, Fixture,
   ParticipantStanding, RoundResultParticipant, RoundResultEntry,
   TournamentForm, TournamentFormFixture,
-  SquadData, RecapData, PreMatchData,
+  SquadData, RecapData, PreMatchData, EventsData,
   ContentTab, DrawerTab, MobileView, NoticeTone,
 } from '@/app/components/playground-types';
 import {
@@ -116,6 +116,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [squadLoading, setSquadLoading] = useState(false);
   const [recapData, setRecapData] = useState<RecapData | null>(null);
   const [recapLoading, setRecapLoading] = useState(false);
+  const [eventsData, setEventsData] = useState<EventsData | null>(null);
   const [preMatchData, setPreMatchData] = useState<PreMatchData | null>(null);
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -360,16 +361,21 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       .finally(() => setSquadLoading(false));
   }, [contentTab, selectedFixtureId]);
 
-  // Fetch match statistics when the Recap tab is active
+  // Fetch match statistics + events when the Recap tab is active
   useEffect(() => {
-    if (contentTab !== 'recap' || !selectedFixtureId) { setRecapData(null); return; }
+    if (contentTab !== 'recap' || !selectedFixtureId) { setRecapData(null); setEventsData(null); return; }
     setRecapLoading(true);
     setRecapData(null);
-    fetch(`/api/fixtures/${selectedFixtureId}/statistics`, { cache: 'no-store' })
-      .then(r => r.json())
-      .then(d => { setRecapData(d); })
-      .catch(() => { setRecapData({ available: false, reason: 'api_error', homeTeam: null, awayTeam: null, stats: [] }); })
-      .finally(() => setRecapLoading(false));
+    setEventsData(null);
+    Promise.all([
+      fetch(`/api/fixtures/${selectedFixtureId}/statistics`, { cache: 'no-store' }).then(r => r.json()),
+      fetch(`/api/fixtures/${selectedFixtureId}/events`,    { cache: 'no-store' }).then(r => r.json()),
+    ]).then(([stats, events]) => {
+      setRecapData(stats);
+      setEventsData(events);
+    }).catch(() => {
+      setRecapData({ available: false, reason: 'api_error', homeTeam: null, awayTeam: null, stats: [] });
+    }).finally(() => setRecapLoading(false));
   }, [contentTab, selectedFixtureId]);
 
   // Scroll the fixture feed to show the selected fixture at the top
@@ -1380,6 +1386,21 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
     const { homeTeam, awayTeam, stats } = recapData;
 
+    // ── Timeline ────────────────────────────────────────────────────────────
+    const timeline = eventsData?.available ? eventsData.events : [];
+
+    function eventIcon(type: string, detail: string): string {
+      if (type === 'Goal') {
+        if (detail.includes('Own')) return '⚽↩';
+        if (detail.includes('Penalty')) return '⚽ (P)';
+        return '⚽';
+      }
+      if (type === 'Card') return detail.includes('Red') ? '🟥' : '🟨';
+      if (type === 'Subst') return '🔄';
+      if (type === 'Var') return 'VAR';
+      return '•';
+    }
+
     function parseNum(v: number | string | null): number {
       if (v === null || v === undefined) return 0;
       if (typeof v === 'number') return v;
@@ -1388,7 +1409,53 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
     return (
       <div className="wc-recap">
-        {/* Team header */}
+
+        {/* ── Match timeline ──────────────────────────────────────────── */}
+        {timeline.length > 0 && (
+          <div className="wc-timeline">
+            {timeline.map((ev, i) => {
+              const isHome = ev.team === homeTeam;
+              const min = ev.extraMinute ? `${ev.minute}+${ev.extraMinute}'` : `${ev.minute}'`;
+              const isGoal = ev.type === 'Goal';
+              const isCard = ev.type === 'Card';
+              return (
+                <div key={i} className={`wc-timeline-row${isHome ? ' wc-timeline-row--home' : ' wc-timeline-row--away'}`}>
+                  {isHome ? (
+                    <>
+                      <div className="wc-timeline-detail">
+                        <span className={`wc-timeline-player${isGoal ? ' wc-timeline-player--goal' : ''}`}>{ev.player}</span>
+                        {ev.assist && <span className="wc-timeline-assist">↳ {ev.assist}</span>}
+                        {ev.detail.includes('Own') && <span className="wc-timeline-tag">OG</span>}
+                        {ev.detail.includes('Penalty') && !ev.detail.includes('Miss') && <span className="wc-timeline-tag">P</span>}
+                      </div>
+                      <div className={`wc-timeline-icon${isGoal ? ' wc-timeline-icon--goal' : isCard ? ev.detail.includes('Red') ? ' wc-timeline-icon--red' : ' wc-timeline-icon--yellow' : ''}`}>
+                        {ev.type === 'Subst' ? '⇄' : ev.type === 'Goal' ? '⚽' : ev.detail.includes('Red') ? '🟥' : '🟨'}
+                      </div>
+                      <div className="wc-timeline-min">{min}</div>
+                      <div className="wc-timeline-spacer" />
+                    </>
+                  ) : (
+                    <>
+                      <div className="wc-timeline-spacer" />
+                      <div className="wc-timeline-min">{min}</div>
+                      <div className={`wc-timeline-icon${isGoal ? ' wc-timeline-icon--goal' : isCard ? ev.detail.includes('Red') ? ' wc-timeline-icon--red' : ' wc-timeline-icon--yellow' : ''}`}>
+                        {ev.type === 'Subst' ? '⇄' : ev.type === 'Goal' ? '⚽' : ev.detail.includes('Red') ? '🟥' : '🟨'}
+                      </div>
+                      <div className="wc-timeline-detail">
+                        <span className={`wc-timeline-player${isGoal ? ' wc-timeline-player--goal' : ''}`}>{ev.player}</span>
+                        {ev.assist && <span className="wc-timeline-assist">↳ {ev.assist}</span>}
+                        {ev.detail.includes('Own') && <span className="wc-timeline-tag">OG</span>}
+                        {ev.detail.includes('Penalty') && !ev.detail.includes('Miss') && <span className="wc-timeline-tag">P</span>}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Team header ──────────────────────────────────────────────── */}
         <div className="wc-recap-header">
           <span className="wc-recap-team wc-recap-team--home">
             {teamFlag(homeTeam ?? '')} {homeTeam}
@@ -1850,7 +1917,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                           });
 
                           return (
-                            <div key={f.id}>
+                            <Fragment key={f.id}>
                               {showDateHeader && (
                                 <div className="wc-matchday-header">
                                   <span>Matchday {matchdayNum}</span>
@@ -1973,7 +2040,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                                 );
                               })()}
                               </button>
-                            </div>
+                            </Fragment>
                           );
                         });
                       })()

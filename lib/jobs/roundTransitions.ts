@@ -212,33 +212,98 @@ async function notifyResultsSettled(
   tournamentId: string,
   stage: string
 ) {
-  const { data: participants } = await service
-    .from('matchup_participant')
-    .select('user_id, matchup:matchup_id(tournament_id)')
-    .eq('matchup.tournament_id', tournamentId) as {
-    data: Array<{ user_id: string; matchup: { tournament_id: string } | null }> | null;
-  };
-
-  const userIds = [...new Set(
-    (participants ?? [])
-      .filter((p) => p.matchup !== null)
-      .map((p) => p.user_id)
-  )];
-
-  if (!userIds.length) return;
-
   const stageLabel = stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-  await createNotificationEvents(
-    userIds.map((userId) => ({
-      userId,
-      eventType: 'RESULTS_SETTLED' as const,
-      payload: {
-        title: 'Results are in!',
-        body: `${stageLabel} results are settled — open the app to see your score.`,
-        url: '/play',
-        tag: `results-settled-${roundId}`,
-      },
-    }))
-  );
+  // Get all matchups for this tournament with both participants + standings
+  const { data: matchups } = await service
+    .from('matchup')
+    .select('id')
+    .eq('tournament_id', tournamentId) as { data: Array<{ id: string }> | null };
+
+  if (!matchups?.length) return;
+
+  // Next round fixture count (tells players how many picks are coming)
+  const { data: nextRound } = await service
+    .from('round')
+    .select('id, stage')
+    .eq('tournament_id', tournamentId)
+    .eq('is_complete', false)
+    .order('order_index', { ascending: true })
+    .limit(1)
+    .maybeSingle() as { data: { id: string; stage: string } | null };
+
+  let nextFixtureCount = 0;
+  if (nextRound) {
+    const { count } = await service.from('fixture').select('*', { count: 'exact', head: true }).eq('round_id', nextRound.id);
+    nextFixtureCount = count ?? 0;
+  }
+
+  const nextLabel = nextRound
+    ? nextRound.stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : null;
+
+  const events: { userId: string; matchupId: string; eventType: 'RESULTS_SETTLED'; payload: { title: string; body: string; url: string; tag: string } }[] = [];
+
+  for (const matchup of matchups) {
+    // Get round results for this matchup
+    const { data: roundResults } = await service
+      .from('round_result')
+      .select('participant_id, points')
+      .eq('matchup_id', matchup.id)
+      .eq('round_id', roundId) as { data: Array<{ participant_id: string; points: number }> | null };
+
+    // Get tournament standings for both participants
+    const { data: standings } = await service
+      .from('matchup_standing')
+      .select('participant_id, tournament_points')
+      .eq('matchup_id', matchup.id) as { data: Array<{ participant_id: string; tournament_points: number }> | null };
+
+    // Get participant user IDs
+    const { data: participants } = await service
+      .from('matchup_participant')
+      .select('id, user_id')
+      .eq('matchup_id', matchup.id) as { data: Array<{ id: string; user_id: string }> | null };
+
+    if (!participants?.length || !standings?.length) continue;
+
+    for (const p of participants) {
+      const opp = participants.find(x => x.id !== p.id);
+      if (!opp) continue;
+
+      const myStanding  = standings.find(s => s.participant_id === p.id);
+      const oppStanding = standings.find(s => s.participant_id === opp.id);
+      const myRound     = roundResults?.find(r => r.participant_id === p.id);
+      const oppRound    = roundResults?.find(r => r.participant_id === opp.id);
+
+      const myTotal  = myStanding?.tournament_points  ?? 0;
+      const oppTotal = oppStanding?.tournament_points ?? 0;
+      const myRoundPts  = myRound?.points  ?? 0;
+      const oppRoundPts = oppRound?.points ?? 0;
+
+      const roundResult = myRoundPts > oppRoundPts ? 'won'
+        : myRoundPts < oppRoundPts ? 'lost' : 'tied';
+
+      const scoreStr = `${myTotal}–${oppTotal}`;
+      const roundStr = myRoundPts > 0 ? ` You scored ${myRoundPts}pts this round.` : '';
+
+      let body: string;
+      if (nextLabel && nextFixtureCount > 0) {
+        const pickWord = nextFixtureCount === 1 ? '1 pick' : `${nextFixtureCount} picks`;
+        if (roundResult === 'won')  body = `${stageLabel} done — you're leading ${scoreStr}.${roundStr} ${nextLabel} opens with ${pickWord}.`;
+        else if (roundResult === 'lost') body = `${stageLabel} done — you're trailing ${scoreStr}.${roundStr} ${nextLabel} opens with ${pickWord} — make it count!`;
+        else body = `${stageLabel} done — it's tied ${scoreStr}!${roundStr} ${nextLabel} opens with ${pickWord}.`;
+      } else {
+        body = `${stageLabel} results are in — ${roundResult === 'won' ? 'you\'re leading' : roundResult === 'lost' ? 'you\'re trailing' : 'it\'s tied'} ${scoreStr}.`;
+      }
+
+      events.push({
+        userId: p.user_id,
+        matchupId: matchup.id,
+        eventType: 'RESULTS_SETTLED',
+        payload: { title: `${stageLabel} results are in!`, body, url: '/play', tag: `results-settled-${roundId}` },
+      });
+    }
+  }
+
+  if (events.length) await createNotificationEvents(events);
 }

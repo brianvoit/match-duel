@@ -198,26 +198,34 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
         </div>
       )}
 
-      {/* ── Top Scorers ────────────────────────────────────────────────── */}
-      {topScorers && topScorers.length > 0 && (
-        <div className="wc-fd-section">
-          <SectionLabel>Tournament Top Scorers</SectionLabel>
-          <div className="wc-pm-scorers">
-            {topScorers.map((s, i) => {
-              const isFixtureTeam = s.teamName === homeTeam || s.teamName === awayTeam;
-              return (
-                <div key={i} className={`wc-pm-scorer${isFixtureTeam ? ' wc-pm-scorer--highlight' : ''}`}>
-                  <span className="wc-pm-scorer-rank">{i + 1}</span>
+      {/* ── Goalscorers (fixture teams only) ──────────────────────────── */}
+      {(() => {
+        const fixtureScorers = (topScorers ?? []).filter(
+          s => s.teamName === homeTeam || s.teamName === awayTeam
+        );
+        if (!fixtureScorers.length) return null;
+        return (
+          <div className="wc-fd-section">
+            <SectionLabel>Goalscorers</SectionLabel>
+            <div className="wc-pm-scorers">
+              <div className="wc-pm-scorer wc-pm-scorer--header">
+                <span className="wc-pm-scorer-flag" />
+                <span className="wc-pm-scorer-name" />
+                <span className="wc-pm-scorer-goals">G</span>
+                <span className="wc-pm-scorer-assists">A</span>
+              </div>
+              {fixtureScorers.map((s, i) => (
+                <div key={i} className="wc-pm-scorer wc-pm-scorer--highlight">
                   <span className="wc-pm-scorer-flag">{teamFlag(s.teamName)}</span>
                   <span className="wc-pm-scorer-name">{s.playerName}</span>
-                  <span className="wc-pm-scorer-goals">⚽ {s.goals}</span>
-                  {s.assists > 0 && <span className="wc-pm-scorer-assists">🅰 {s.assists}</span>}
+                  <span className="wc-pm-scorer-goals">{s.goals}</span>
+                  <span className="wc-pm-scorer-assists">{s.assists}</span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );

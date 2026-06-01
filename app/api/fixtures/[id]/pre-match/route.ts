@@ -160,7 +160,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   // ── Top scorers ────────────────────────────────────────────────────────────
   let topScorers: TopScorer[] | null = null;
   if (Array.isArray(scorersRaw) && scorersRaw.length) {
-    topScorers = scorersRaw.slice(0, 10).map((s: {
+    topScorers = scorersRaw.slice(0, 30).map((s: {
       player: { name: string };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       statistics: any[];
