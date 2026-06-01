@@ -549,34 +549,22 @@ select {
 
 .wc-topbar-brand {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
+  align-items: baseline;
+  gap: 4px;
   flex-shrink: 0;
 }
 
 .wc-topbar-brand-name {
-  font-size: 1rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: 0.97rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text-0);
-  line-height: 1.1;
 }
 
 .wc-topbar-brand-year {
   font-size: 0.97rem;
   font-weight: 700;
   color: var(--accent);
-}
-
-/* Tournament sub-label below "Match Duel" */
-.wc-topbar-brand-sub {
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-2);
-  line-height: 1;
 }
 
 
