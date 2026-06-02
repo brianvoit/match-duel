@@ -2605,14 +2605,14 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       {onboardingStep !== null && (() => {
         const steps = [
           {
-            icon: '🔄',
-            title: 'You alternate picks',
-            body: 'For every fixture, one of you picks a team — your opponent is automatically assigned the other side. You can never root for the same team.',
+            icon: '⚽',
+            title: 'Pick the winners',
+            body: 'For every fixture, one of you picks which team will win — your opponent is automatically assigned the other side. You can never root for the same team.',
           },
           {
-            icon: '📉',
-            title: 'The loser picks first',
-            body: 'After each round, the player who scored fewer points gets first pick in the next stage. It\'s a built-in comeback mechanic — every round is winnable.',
+            icon: '🔁',
+            title: 'Behind? You pick first',
+            body: 'After each round, the player who scored fewer points gets first pick in the next stage — a built-in edge for the underdog. Every round is a fresh chance.',
           },
           {
             icon: '📈',
@@ -2644,18 +2644,18 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               <h2 className="wc-onboarding-title">{step.title}</h2>
               <p className="wc-onboarding-body">{step.body}</p>
               <div className="wc-onboarding-actions">
+                <button className="wc-onboarding-skip" onClick={dismiss}>SKIP</button>
                 {!isLast ? (
-                  <button className="wc-btn wc-btn-primary" onClick={() => setOnboardingStep(s => (s ?? 1) + 1)}>
-                    Next →
+                  <button className="wc-onboarding-next" onClick={() => setOnboardingStep(s => (s ?? 1) + 1)} aria-label="Next">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                      <path d="M6 4 L12 9 L6 14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </button>
                 ) : (
-                  <button className="wc-btn wc-btn-primary" onClick={dismiss}>
-                    Let&apos;s go!
+                  <button className="wc-btn wc-btn-primary" style={{ fontSize: '0.9rem' }} onClick={dismiss}>
+                    Let&apos;s Duel!
                   </button>
                 )}
-                <button className="wc-btn" onClick={dismiss} style={{ fontSize: '0.78rem' }}>
-                  Skip
-                </button>
               </div>
             </div>
           </div>

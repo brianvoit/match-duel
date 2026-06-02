@@ -367,6 +367,17 @@ export default function AdminPage() {
           {fixtureState.result && <p style={successStyle}>✓ Demo fixtures seeded.</p>}
           {fixtureState.error && <p style={errorStyle}>✗ {fixtureState.error}</p>}
         </div>
+        <div style={{ marginBottom: 12 }}>
+          <button style={btnOutlineStyle(false)} onClick={() => {
+            localStorage.removeItem('md_onboarding_v1');
+            window.location.href = '/play?onboarding=1';
+          }}>
+            Trigger Onboarding
+          </button>
+          <p style={{ ...mutedStyle, marginTop: 4, fontSize: 11 }}>
+            Clears the &ldquo;seen&rdquo; flag and opens the 3-step onboarding overlay.
+          </p>
+        </div>
         {pending.length > 0 && pending.map(m => {
           const s = joinState[m.matchupId] ?? idle;
           return (

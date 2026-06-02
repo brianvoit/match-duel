@@ -60,12 +60,14 @@ export function PickSummaryContent({ stats, onShowUnpicked, onDismiss }: PickSum
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-        <button className="wc-btn wc-btn-primary" type="button" onClick={onShowUnpicked}>
-          Show unpicked →
+      <div className="wc-onboarding-actions" style={{ marginTop: 8 }}>
+        <button className="wc-onboarding-skip" type="button" onClick={onDismiss}>
+          DISMISS
         </button>
-        <button className="wc-btn" type="button" onClick={onDismiss}>
-          Dismiss
+        <button className="wc-onboarding-next" type="button" onClick={onShowUnpicked} aria-label="Show unpicked fixtures">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M6 4 L12 9 L6 14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </button>
       </div>
     </div>
