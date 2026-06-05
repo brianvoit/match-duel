@@ -54,6 +54,7 @@ export function ChatPanel({
   const [opponentOnline, setOpponentOnline] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
   const supabase = createClient();
   const oppName = opponentDisplayName || opponentEmail?.split('@')[0] || 'Opponent';
 
@@ -82,19 +83,18 @@ export function ChatPanel({
     loadMessages();
     markRead();
 
-    // Realtime: messages + reactions
+    // Realtime: broadcast for new messages (works on Nano), postgres_changes for reactions
     const channel = supabase
       .channel(`chat-${matchupId}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'message',
-        filter: `matchup_id=eq.${matchupId}`,
-      }, () => { loadMessages(); markRead(); })
+      .on('broadcast', { event: 'new-message' }, () => { loadMessages(); markRead(); })
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'message_reaction',
       }, () => { loadMessages(); })
       .subscribe();
 
-    // Presence
+    channelRef.current = channel;
+
+    // Presence — reuse the same channel to save a connection
     const presenceCh = supabase.channel(`presence-${matchupId}`);
     presenceCh
       .on('presence', { event: 'sync' }, () => {
@@ -108,10 +108,17 @@ export function ChatPanel({
       });
 
     return () => {
+      channelRef.current = null;
       supabase.removeChannel(channel);
       supabase.removeChannel(presenceCh);
     };
   }, [matchupId, myAppUserId, loadMessages, markRead]);
+
+  // Polling fallback — catches opponent messages if realtime lags or drops
+  useEffect(() => {
+    const interval = setInterval(() => { loadMessages(); }, 8000);
+    return () => clearInterval(interval);
+  }, [loadMessages]);
 
   async function sendMessage() {
     const content = input.trim();
@@ -119,12 +126,34 @@ export function ChatPanel({
     setSending(true);
     setInput('');
     if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
+
+    // Optimistic insert so the message appears instantly
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: ChatMessage = {
+      id: tempId,
+      senderId: myAppUserId,
+      senderName: null,
+      senderAvatar: myAvatarUrl,
+      content,
+      createdAt: new Date().toISOString(),
+      reactions: [],
+    };
+    setMessages(prev => [...prev, optimistic]);
+    scrollToBottom();
+
     const res = await fetch(`/api/matchups/${matchupId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
     });
-    if (!res.ok) setInput(content); // restore on failure
+    if (!res.ok) {
+      setInput(content);
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+    } else {
+      // Broadcast to opponent's client (~50ms delivery) then reload our own view
+      channelRef.current?.send({ type: 'broadcast', event: 'new-message', payload: {} });
+      loadMessages(); // replace optimistic entry with real DB row
+    }
     setSending(false);
   }
 
@@ -236,7 +265,7 @@ export function ChatPanel({
           maxLength={500}
           rows={1}
           placeholder="Message…"
-          disabled={sending}
+
           onChange={(e) => {
             setInput(e.target.value);
             e.target.style.height = 'auto';
