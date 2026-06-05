@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchApiFootballFixtures, mapToProviderFixtures, WC_LEAGUE_ID } from '@/lib/jobs/apiFootballClient';
 import { runFixtureSync } from '@/lib/jobs/fixtureSync';
 import { runRoundTransitions } from '@/lib/jobs/roundTransitions';
+import { notifyMatchFinished } from '@/lib/jobs/notifyMatchFinished';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 
@@ -45,13 +46,32 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Fetch from API-Football
-    const apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season);
+    // Smart strategy: first try live-only (cheap, 1 call). If there are live
+    // matches, that's all we need. If not, fall back to today's fixtures so
+    // we pick up results from matches that finished in the last few minutes.
+    // Full-season fetch is only used for the initial import / admin triggers.
+    const searchParams = new URL(req.url).searchParams;
+    const forceFullSync = searchParams.get('full') === '1';
+
+    let apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season, { liveOnly: !forceFullSync });
+
+    if (!apiFixtures.length && !forceFullSync) {
+      // No live matches — fetch today's date to catch recently finished games
+      const today = new Date().toISOString().split('T')[0];
+      apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season, { date: today });
+    }
+
+    // If still nothing (off-season / no matches today), do a full sync
+    if (!apiFixtures.length && !forceFullSync) {
+      apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season);
+    }
 
     if (!apiFixtures.length) {
       return NextResponse.json({
-        ok: false,
-        error: `API-Football returned 0 fixtures for league=${WC_LEAGUE_ID} season=${season}. Check your plan — the free tier only covers historical seasons.`,
-      }, { status: 400 });
+        ok: true,
+        message: 'No fixtures to sync right now.',
+        season,
+      });
     }
 
     // 2. Map to our format
@@ -71,7 +91,10 @@ export async function POST(req: NextRequest) {
       fixtures,
     });
 
-    // 4. Settle any rounds that are now complete
+    // 4. Fire per-match notifications for newly-final fixtures (respects user prefs)
+    notifyMatchFinished(syncResult.newlyFinal).catch(() => {});
+
+    // 5. Settle any rounds that are now complete
     const transitions = await runRoundTransitions({ tournamentId: tournament.id });
 
     return NextResponse.json({

@@ -93,11 +93,20 @@ async function notifyOpponentOfMessage(
   const isActive = lastActive && Date.now() - new Date(lastActive).getTime() < 60_000;
   if (isActive) return;
 
+  // Check recipient's chat_message preference
+  const { data: recipientPrefs } = await service
+    .from('app_user')
+    .select('notification_preferences')
+    .eq('id', opp.user_id)
+    .single() as { data: { notification_preferences: Record<string, unknown> | null } | null };
+
+  if (recipientPrefs?.notification_preferences?.chat_message === false) return;
+
   const senderLabel = sender.display_name || sender.email.split('@')[0];
   await createNotificationEvents([{
     userId: opp.user_id,
     matchupId,
     eventType: 'NEW_MESSAGE',
-    payload: { title: senderLabel, body: 'Sent you a message', url: '/play', tag: `chat-${matchupId}` },
+    payload: { title: senderLabel, body: 'sent a message', url: '/play', tag: `chat-${matchupId}` },
   }]);
 }

@@ -1,5 +1,29 @@
 'use client';
 
+export interface NotificationPreferences {
+  pick_reminder:  boolean;
+  match_finished: string[];
+  round_complete: boolean;
+  chat_message:   boolean;
+}
+
+const MATCH_FINISHED_STAGES = [
+  { key: 'GROUP',        label: 'Group Stage' },
+  { key: 'ROUND_OF_32',  label: 'Round of 32' },
+  { key: 'ROUND_OF_16',  label: 'Round of 16' },
+  { key: 'QUARTERFINAL', label: 'Quarter-Finals' },
+  { key: 'SEMIFINAL',    label: 'Semi-Finals' },
+  { key: 'THIRD_PLACE',  label: '3rd Place' },
+  { key: 'FINAL',        label: 'Final' },
+];
+
+const DEFAULT_PREFS: NotificationPreferences = {
+  pick_reminder:  true,
+  match_finished: ['QUARTERFINAL', 'SEMIFINAL', 'THIRD_PLACE', 'FINAL'],
+  round_complete: true,
+  chat_message:   true,
+};
+
 interface ProfileSettingsProps {
   userEmail: string;
   userAvatarUrl?: string | null;
@@ -12,12 +36,14 @@ interface ProfileSettingsProps {
   pushSupported: boolean;
   pushEnabled: boolean;
   pushLoading: boolean;
+  notificationPreferences?: NotificationPreferences | null;
   theme: 'system' | 'light' | 'dark';
   onFirstNameChange: (v: string) => void;
   onLastNameChange: (v: string) => void;
   onNameBlur: () => void;
   onDefaultPickSide: (side: 'HOME' | 'AWAY') => void;
   onTogglePush: () => void;
+  onNotificationPrefsChange: (prefs: NotificationPreferences) => void;
   onThemeChange: (t: 'system' | 'light' | 'dark') => void;
   onSignOut: () => void;
 }
@@ -27,10 +53,12 @@ export function ProfileSettings({
   firstName, lastName, savingName,
   defaultPickSide, savingDefaultPick,
   pushSupported, pushEnabled, pushLoading,
+  notificationPreferences,
   theme,
   onFirstNameChange, onLastNameChange, onNameBlur,
-  onDefaultPickSide, onTogglePush, onThemeChange, onSignOut,
+  onDefaultPickSide, onTogglePush, onNotificationPrefsChange, onThemeChange, onSignOut,
 }: ProfileSettingsProps) {
+  const prefs: NotificationPreferences = notificationPreferences ?? DEFAULT_PREFS;
   const shownName = displayName || userEmail.split('@')[0];
 
   return (
@@ -87,10 +115,7 @@ export function ProfileSettings({
       {pushSupported && (
         <div className="wc-profile-setting">
           <div className="wc-profile-setting-label">Push notifications</div>
-          <div className="wc-profile-setting-hint">
-            Get alerted when your opponent picks or results are settled.
-          </div>
-          <div className="wc-toggle-group">
+          <div className="wc-toggle-group" style={{ marginBottom: 12 }}>
             <button className={`wc-toggle-btn${!pushEnabled ? ' wc-toggle-btn--active' : ''}`}
               type="button" disabled={pushLoading}
               onClick={() => pushEnabled && onTogglePush()}>Off</button>
@@ -98,6 +123,53 @@ export function ProfileSettings({
               type="button" disabled={pushLoading}
               onClick={() => !pushEnabled && onTogglePush()}>On</button>
           </div>
+
+          {pushEnabled && (
+            <div className="wc-notif-prefs">
+
+              {/* Pick reminder */}
+              <label className="wc-notif-row">
+                <span className="wc-notif-label">Pick reminders</span>
+                <input type="checkbox" checked={prefs.pick_reminder}
+                  onChange={e => onNotificationPrefsChange({ ...prefs, pick_reminder: e.target.checked })} />
+              </label>
+
+              {/* Match finished */}
+              <div className="wc-notif-row wc-notif-row--group">
+                <span className="wc-notif-label">Match finished</span>
+                <div className="wc-notif-stages">
+                  {MATCH_FINISHED_STAGES.map(({ key, label }) => (
+                    <label key={key} className="wc-notif-stage-row">
+                      <span>{label}</span>
+                      <input type="checkbox"
+                        checked={prefs.match_finished.includes(key)}
+                        onChange={e => {
+                          const stages = e.target.checked
+                            ? [...prefs.match_finished, key]
+                            : prefs.match_finished.filter(s => s !== key);
+                          onNotificationPrefsChange({ ...prefs, match_finished: stages });
+                        }} />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Round results */}
+              <label className="wc-notif-row">
+                <span className="wc-notif-label">Round results</span>
+                <input type="checkbox" checked={prefs.round_complete}
+                  onChange={e => onNotificationPrefsChange({ ...prefs, round_complete: e.target.checked })} />
+              </label>
+
+              {/* Chat */}
+              <label className="wc-notif-row">
+                <span className="wc-notif-label">Chat messages</span>
+                <input type="checkbox" checked={prefs.chat_message}
+                  onChange={e => onNotificationPrefsChange({ ...prefs, chat_message: e.target.checked })} />
+              </label>
+
+            </div>
+          )}
         </div>
       )}
 

@@ -936,6 +936,18 @@ select {
   margin-left: 2px;
 }
 
+/* Mobile: show short brand ("FIFA"), hide full ("FIFA World Cup") */
+.wc-topbar-brand-name--short { display: none; }
+
+@media (max-width: 767px) {
+  .wc-topbar-brand-name--full  { display: none; }
+  .wc-topbar-brand-name--short { display: inline; }
+
+  /* H2H scorebug: hide names, just show avatars + score */
+  .wc-h2h-name { display: none; }
+  .wc-h2h { padding: 4px 8px; gap: 6px; }
+}
+
 .wc-dropdown--left {
   left: 0;
   right: auto;
@@ -2771,7 +2783,7 @@ select {
 /* Score modal heading — sits below the scorebug */
 .wc-chart-heading {
   margin: 12px 0 0;
-  padding: 0 20px;
+  padding: 0;
   font-size: 0.82rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -2780,14 +2792,6 @@ select {
 }
 
 /* Score modal — scorebug wrapper centers the pill */
-.wc-chart-scorebug-wrap {
-  display: flex;
-  justify-content: center;
-  padding: 16px 0 8px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 4px;
-}
-
 /* Stakes remaining table */
 .wc-stakes-table {
   margin-bottom: 12px;
@@ -2806,6 +2810,13 @@ select {
 .wc-stakes-stage {
   font-weight: 600;
   color: var(--text-0);
+}
+
+.wc-stakes-stage-short { display: none; }
+
+@media (max-width: 767px) {
+  .wc-stakes-stage-full  { display: none; }
+  .wc-stakes-stage-short { display: inline; }
 }
 
 .wc-stakes-table tfoot td {
@@ -3179,6 +3190,23 @@ select {
   padding-top: 2px;
 }
 
+/* Minute + running score wrapper (goal events only) */
+.wc-timeline-min-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.wc-timeline-min-wrap--away { justify-content: flex-end; }   /* away goal: left col, push right toward center */
+.wc-timeline-min-wrap--home { justify-content: flex-start; } /* home goal: right col, start from center */
+
+.wc-timeline-goal-score {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-1);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
 /* Event icon circle — sits on top of the dotted line */
 .wc-timeline-icon {
   width: 28px;
@@ -3297,7 +3325,7 @@ select {
 }
 
 .wc-recap-team {
-  font-size: 0.9rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--text-0);
   display: flex;
@@ -3327,7 +3355,7 @@ select {
 .wc-recap-label {
   flex: 1;
   text-align: center;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-0);
 }
@@ -3980,6 +4008,67 @@ select {
   gap: 6px;
 }
 
+/* Notification preferences */
+.wc-notif-prefs {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.wc-notif-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  gap: 12px;
+}
+
+.wc-notif-row:last-child { border-bottom: none; }
+
+.wc-notif-row--group {
+  flex-direction: column;
+  align-items: stretch;
+  cursor: default;
+}
+
+.wc-notif-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-0);
+}
+
+.wc-notif-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 8px;
+}
+
+.wc-notif-stage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 8px 12px;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--text-1);
+}
+
+.wc-notif-row input[type="checkbox"],
+.wc-notif-stage-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 .wc-toggle-btn {
   flex: 1;
   padding: 8px 0;
@@ -4109,6 +4198,77 @@ select {
   width: min(580px, 100%);
 }
 
+/* Score chart modal — nav bar + scrollable body */
+.wc-score-modal {
+  padding: 0;
+  overflow: hidden;
+  gap: 0;
+  /* Desktop: constrain height so body can flex-scroll */
+  max-height: calc(100dvh - 32px);
+}
+
+/* Nav bar — always visible, never scrolls */
+.wc-score-modal-nav {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Scorebug inside the nav bar — display only, no pill border/hover */
+.wc-h2h--nav {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  cursor: default;
+  pointer-events: none;
+}
+.wc-h2h--nav:hover {
+  background: none;
+  box-shadow: none;
+}
+
+/* Scrollable content area */
+.wc-score-modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 24px;
+}
+
+/* Table wrapper — no horizontal scroll, columns sized to fit */
+.wc-score-modal-table-wrap {
+  overflow-x: hidden;
+}
+
+/* Mobile: full-screen page takeover */
+@media (max-width: 767px) {
+  .wc-chart-modal-backdrop {
+    padding: 0;
+    background: var(--bg);       /* opaque — no overlay dimming */
+  }
+  .wc-chart-modal-backdrop .wc-score-modal {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .wc-score-modal-nav {
+    height: var(--topbar-h);     /* match app header height */
+    padding: 0 14px;
+    background: var(--glass-strong);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--separator);
+  }
+}
+
 /* Score chart */
 .wc-chart-wrap {
   border: 1px solid var(--line);
@@ -4187,6 +4347,165 @@ select {
   display: none;
 }
 
+/* ── Mobile nav avatar (Profile tab icon) ────────────────────────────────── */
+.wc-mobile-nav-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wc-mobile-nav-avatar--initials {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.wc-mobile-nav-btn--profile[aria-pressed='true'] .wc-mobile-nav-avatar {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ── Mobile nav badge (unread count on Chat tab) ──────────────────────────── */
+.wc-mobile-nav-badge {
+  position: absolute;
+  top: 4px;
+  right: calc(50% - 18px);
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  pointer-events: none;
+}
+
+/* ── Mobile full-screen overlay (Home lobby / Chat / Profile) ─────────────── */
+.wc-mobile-overlay {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .wc-mobile-overlay {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    inset: 0;
+    bottom: var(--mobile-nav-h);
+    z-index: 30;
+    background: var(--bg);
+  }
+
+  .wc-mobile-overlay-nav {
+    flex-shrink: 0;
+    height: var(--topbar-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    background: var(--glass-strong);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid var(--separator);
+  }
+
+  .wc-mobile-overlay-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-0);
+    letter-spacing: -0.01em;
+  }
+
+  .wc-mobile-overlay-body {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .wc-mobile-overlay-body--chat {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+  }
+
+  /* ── Matchup lobby cards ──────────────────────────────────────────────── */
+  .wc-matchup-lobby-card {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    border: none;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: background 120ms ease;
+  }
+
+  .wc-matchup-lobby-card:active {
+    background: var(--glass);
+  }
+
+  .wc-matchup-lobby-card--active {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  .wc-matchup-lobby-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: linear-gradient(135deg, #64748b, #94a3b8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .wc-matchup-lobby-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .wc-matchup-lobby-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .wc-matchup-lobby-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-0);
+  }
+
+  .wc-matchup-lobby-sub {
+    font-size: 0.75rem;
+    color: var(--text-2);
+  }
+
+  .wc-matchup-lobby-chevron {
+    color: var(--text-2);
+    flex-shrink: 0;
+  }
+}
+
 /* ── Status panel (legacy, kept for safety) ──────────────────────────────────── */
 
 .wc-status {
@@ -4238,6 +4557,25 @@ select {
 
   .wc-topbar-email {
     max-width: 100px;
+  }
+
+  /* Hide tournament brand label — selector lives in Profile tab on mobile */
+  .wc-tournament-menu {
+    display: none;
+  }
+
+  /* Hide profile avatar button from header — it lives in the bottom nav on mobile */
+  .wc-user-menu {
+    display: none;
+  }
+
+  /* True-center the scorebug regardless of what's on either side */
+  .wc-topbar-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    flex: none;
+    pointer-events: auto;
   }
 }
 

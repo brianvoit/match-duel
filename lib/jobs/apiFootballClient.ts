@@ -91,15 +91,29 @@ function apiRoundToMatchday(round: string): number | null {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/** Fetch all fixtures for a league+season from API-Football. */
+/**
+ * Fetch all fixtures for a league+season from API-Football.
+ * Pass `liveOnly: true` to only fetch LIVE matches (much cheaper during cron runs
+ * when no match is in progress). Pass `date` to fetch a specific day's fixtures.
+ */
 export async function fetchApiFootballFixtures(
   leagueId: number,
-  season: number
+  season: number,
+  options: { liveOnly?: boolean; date?: string } = {}
 ): Promise<ApiFixture[]> {
   const key = serverEnv.API_FOOTBALL_KEY;
   if (!key) throw new Error('API_FOOTBALL_KEY is not configured.');
 
-  const url = `${BASE_URL}/fixtures?league=${leagueId}&season=${season}&timezone=UTC`;
+  let url: string;
+  if (options.liveOnly) {
+    // Only in-progress matches (1H, HT, 2H, ET, BT, P) — very cheap
+    url = `${BASE_URL}/fixtures?live=all&league=${leagueId}&timezone=UTC`;
+  } else if (options.date) {
+    // All matches on a specific date — used to sync results same day
+    url = `${BASE_URL}/fixtures?league=${leagueId}&season=${season}&date=${options.date}&timezone=UTC`;
+  } else {
+    url = `${BASE_URL}/fixtures?league=${leagueId}&season=${season}&timezone=UTC`;
+  }
   const res = await fetch(url, {
     headers: { 'x-apisports-key': key },
     // Bypass Cloudflare/Next.js caches — we always want fresh data

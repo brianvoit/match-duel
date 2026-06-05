@@ -1,5 +1,5 @@
 name = "match-duel"
-main = ".open-next/worker.js"
+main = "cloudflare/worker-entry.ts"
 compatibility_date = "2026-05-22"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
@@ -12,3 +12,8 @@ custom_domain = true
 [assets]
 directory = ".open-next/assets"
 binding = "ASSETS"
+
+# Cron triggers — fire every 5 minutes to sync live scores + send pick reminders
+# 288 API-Football calls/day (well within the 7,500/day Pro plan limit)
+[triggers]
+crons = ["*/5 * * * *"]

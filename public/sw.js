@@ -2,7 +2,7 @@ self.addEventListener('push', function (event) {
   if (!event.data) return;
   var data = event.data.json();
   event.waitUntil(
-    self.registration.showNotification(data.title || "World Cup Pick'Em", {
+    self.registration.showNotification(data.title || "Match Duel", {
       body: data.body || '',
       icon: '/favicon.ico',
       data: { url: data.url || '/play' },
@@ -18,8 +18,17 @@ self.addEventListener('notificationclick', function (event) {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
       for (var i = 0; i < list.length; i++) {
-        if ('focus' in list[i]) return list[i].focus();
+        var client = list[i];
+        if ('focus' in client) {
+          // Navigate the existing tab to the target URL, then focus it
+          if ('navigate' in client) {
+            return client.navigate(url).then(function () { return client.focus(); });
+          }
+          // Fallback: focus and let the app read the URL on its next render
+          return client.focus();
+        }
       }
+      // No open tab — open a new one
       return clients.openWindow(url);
     })
   );

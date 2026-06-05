@@ -7,6 +7,7 @@ type NotificationEventType =
   | 'MISSED_PICK'
   | 'OPPONENT_PICKED'
   | 'RESULTS_SETTLED'
+  | 'MATCH_FINISHED'
   | 'NEW_MESSAGE';
 
 interface PushPayload {

@@ -280,27 +280,26 @@ async function notifyResultsSettled(
       const myRoundPts  = myRound?.points  ?? 0;
       const oppRoundPts = oppRound?.points ?? 0;
 
-      const roundResult = myRoundPts > oppRoundPts ? 'won'
-        : myRoundPts < oppRoundPts ? 'lost' : 'tied';
+      // Check user preference for round_complete notifications
+      const { data: userRow } = await service
+        .from('app_user')
+        .select('notification_preferences')
+        .eq('id', p.user_id)
+        .single() as { data: { notification_preferences: Record<string, unknown> | null } | null };
 
+      if (userRow?.notification_preferences?.round_complete === false) continue;
+
+      // Concise: "Group Stage · 40–31 · +12pts"
       const scoreStr = `${myTotal}–${oppTotal}`;
-      const roundStr = myRoundPts > 0 ? ` You scored ${myRoundPts}pts this round.` : '';
-
-      let body: string;
-      if (nextLabel && nextFixtureCount > 0) {
-        const pickWord = nextFixtureCount === 1 ? '1 pick' : `${nextFixtureCount} picks`;
-        if (roundResult === 'won')  body = `${stageLabel} done — you're leading ${scoreStr}.${roundStr} ${nextLabel} opens with ${pickWord}.`;
-        else if (roundResult === 'lost') body = `${stageLabel} done — you're trailing ${scoreStr}.${roundStr} ${nextLabel} opens with ${pickWord} — make it count!`;
-        else body = `${stageLabel} done — it's tied ${scoreStr}!${roundStr} ${nextLabel} opens with ${pickWord}.`;
-      } else {
-        body = `${stageLabel} results are in — ${roundResult === 'won' ? 'you\'re leading' : roundResult === 'lost' ? 'you\'re trailing' : 'it\'s tied'} ${scoreStr}.`;
-      }
+      const body = myRoundPts > 0
+        ? `${stageLabel} · ${scoreStr} · +${myRoundPts}pts`
+        : `${stageLabel} · ${scoreStr}`;
 
       events.push({
         userId: p.user_id,
         matchupId: matchup.id,
         eventType: 'RESULTS_SETTLED',
-        payload: { title: `${stageLabel} results are in!`, body, url: '/play', tag: `results-settled-${roundId}` },
+        payload: { title: `${stageLabel} done`, body, url: '/play', tag: `results-settled-${roundId}` },
       });
     }
   }

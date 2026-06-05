@@ -37,6 +37,11 @@ const STAGE_ABBR: Record<string, string> = {
   QUARTERFINAL: 'QF', SEMIFINAL: 'SF', THIRD_PLACE: '3P', FINAL: 'F',
 };
 
+const STAGE_MOBILE_LABEL: Record<string, string> = {
+  GROUP: 'GS', ROUND_OF_32: 'R32', ROUND_OF_16: 'R16',
+  QUARTERFINAL: 'QF', SEMIFINAL: 'SF', THIRD_PLACE: '3rd', FINAL: 'Final',
+};
+
 const KNOCKOUT_ORDER = ['ROUND_OF_32', 'ROUND_OF_16', 'QUARTERFINAL', 'SEMIFINAL', 'THIRD_PLACE', 'FINAL'];
 
 const STAGE_GAME_COUNTS: Record<string, number> = {
@@ -91,10 +96,13 @@ export function ScoreChartModal({
     return (
       <div className="wc-modal-backdrop" role="dialog" aria-modal="true" aria-label="Score breakdown"
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-        <div className="wc-modal wc-modal--wide" style={{ textAlign: 'center', padding: '24px 0' }}>
-          <button className="wc-topbar-icon-btn" aria-label="Close" onClick={onClose}
-            style={{ position: 'absolute', top: 12, right: 12 }}>✕</button>
-          <p className="wc-subtitle">No matchday data yet. Scores will appear once rounds are scored.</p>
+        <div className="wc-modal wc-modal--wide wc-score-modal">
+          <div className="wc-score-modal-close-row">
+            <button className="wc-topbar-icon-btn" aria-label="Close" onClick={onClose}>✕</button>
+          </div>
+          <div className="wc-score-modal-body" style={{ textAlign: 'center' }}>
+            <p className="wc-subtitle">No matchday data yet. Scores will appear once rounds are scored.</p>
+          </div>
         </div>
       </div>
     );
@@ -202,7 +210,8 @@ export function ScoreChartModal({
       const myE  = result?.participants.find(p => p.participantId === myParticipantId);
       const oppE = result?.participants.find(p => p.participantId !== myParticipantId);
       return {
-        label: fmtStage(round.stage),
+        label:      fmtStage(round.stage),
+        shortLabel: STAGE_MOBILE_LABEL[round.stage] ?? fmtStage(round.stage),
         total, remaining, points: remaining * pts2,
         myPts:  result ? (myE?.points  ?? 0) : null,
         oppPts: result ? (oppE?.points ?? 0) : null,
@@ -266,15 +275,19 @@ export function ScoreChartModal({
   );
 
   return (
-    <div className="wc-modal-backdrop" role="dialog" aria-modal="true" aria-label="Score breakdown"
+    <div className="wc-modal-backdrop wc-chart-modal-backdrop" role="dialog" aria-modal="true" aria-label="Score breakdown"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="wc-modal wc-modal--wide">
-        <button className="wc-topbar-icon-btn" aria-label="Close" onClick={onClose}
-          style={{ position: 'absolute', top: 12, right: 12 }}>✕</button>
+      <div className="wc-modal wc-modal--wide wc-score-modal">
 
-        {/* H2H scorebug */}
-        <div className="wc-chart-scorebug-wrap">
-          <div className="wc-h2h">
+        {/* Nav bar — scorebug as the title, never scrolls */}
+        <div className="wc-score-modal-nav">
+          <button className="wc-topbar-icon-btn" aria-label="Close" onClick={onClose}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M10 3 L5 8 L10 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+
+          <div className="wc-h2h wc-h2h--nav">
             <div className="wc-h2h-player">
               <span className="wc-h2h-name">{myName}</span>
               {userAvatarUrl
@@ -293,37 +306,41 @@ export function ScoreChartModal({
                 : <span className="wc-h2h-avatar wc-h2h-avatar--opp">{oppInit}</span>}
             </div>
           </div>
+
+          <div style={{ width: 34 }} />
         </div>
+
+        {/* Scrollable body */}
+        <div className="wc-score-modal-body">
 
         {/* Points chart */}
         <h3 className="wc-chart-heading">Score by Matchday</h3>
         <div className="wc-chart-wrap">{renderChart(ptsData, pts, 'pts-')}</div>
+
+        {/* Goals chart */}
+        {goalsData.some(d => d.played) && (
+          <>
+            <h3 className="wc-chart-heading">Goals Scored</h3>
+            <div className="wc-chart-wrap">{renderChart(goalsData, goals, 'goals-')}</div>
+          </>
+        )}
+
+        {/* Single shared legend for both charts */}
         <div className="wc-chart-legend">
           <span className="wc-chart-legend-item"><span className="wc-chart-legend-dot" style={{ background: myColor }} />{myName}</span>
           <span className="wc-chart-legend-item"><span className="wc-chart-legend-dot" style={{ background: oppColor }} />{oppName}</span>
         </div>
 
-        {/* Goals chart */}
-        {goalsData.some(d => d.played) && (
-          <>
-            <h3 className="wc-chart-heading" style={{ marginTop: 8 }}>Goals Scored by Picks</h3>
-            <div className="wc-chart-wrap">{renderChart(goalsData, goals, 'goals-')}</div>
-            <div className="wc-chart-legend">
-              <span className="wc-chart-legend-item"><span className="wc-chart-legend-dot" style={{ background: myColor }} />{myName}: {goalsMyC} goals</span>
-              <span className="wc-chart-legend-item"><span className="wc-chart-legend-dot" style={{ background: oppColor }} />{oppName}: {goalsOppC} goals</span>
-            </div>
-          </>
-        )}
-
         {/* Stakes table */}
+        <div className="wc-score-modal-table-wrap">
         <table className="wc-round-table wc-stakes-table">
           <colgroup>
-            <col style={{ width: '30%' }} /><col style={{ width: '14%' }} /><col style={{ width: '14%' }} />
-            <col style={{ width: '14%' }} /><col style={{ width: '14%' }} /><col style={{ width: '14%' }} />
+            <col style={{ width: '20%' }} /><col style={{ width: '16%' }} /><col style={{ width: '16%' }} />
+            <col style={{ width: '16%' }} /><col style={{ width: '16%' }} /><col style={{ width: '16%' }} />
           </colgroup>
           <thead>
             <tr>
-              <th></th><th>Games</th><th>Remaining</th><th>Points</th>
+              <th></th><th>G</th><th>Left</th><th>Avail</th>
               <th>{avatarCell(userAvatarUrl, (displayName || userEmail).charAt(0).toUpperCase())}</th>
               <th>{avatarCell(oppAvatarUrl, initials(selectedMatchup.opponentDisplayName || selectedMatchup.opponentEmail || 'O'))}</th>
             </tr>
@@ -331,7 +348,10 @@ export function ScoreChartModal({
           <tbody>
             {stakeRows.map(r => (
               <tr key={r.label}>
-                <td className="wc-stakes-stage">{r.label}</td>
+                <td className="wc-stakes-stage">
+                  <span className="wc-stakes-stage-full">{r.label}</span>
+                  <span className="wc-stakes-stage-short">{r.shortLabel}</span>
+                </td>
                 <td>{r.total}</td><td>{r.remaining}</td><td>{r.points}</td>
                 <td>{r.myPts  !== null ? r.myPts  : '—'}</td>
                 <td>{r.oppPts !== null ? r.oppPts : '—'}</td>
@@ -346,6 +366,9 @@ export function ScoreChartModal({
             </tr>
           </tfoot>
         </table>
+        </div>{/* end table-wrap */}
+
+        </div>{/* end wc-score-modal-body */}
       </div>
     </div>
   );

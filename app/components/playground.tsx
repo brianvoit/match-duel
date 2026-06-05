@@ -107,8 +107,10 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState<import('@/app/components/profile-settings').NotificationPreferences | null>(null);
   const swRegistration = useRef<ServiceWorkerRegistration | null>(null);
   const feedScrollRef = useRef<HTMLDivElement>(null);
+  const autoScrolledMatchup = useRef<string | null>(null);
   const [headToHead, setHeadToHead] = useState<{ year: number; stage: string; home: string; away: string; homeGoals: number | null; awayGoals: number | null }[]>([]);
   const [h2hHome, setH2hHome] = useState<string>('');
   const [h2hAway, setH2hAway] = useState<string>('');
@@ -166,16 +168,28 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const visibleFixtures = useMemo(() => {
     return fixtures.filter((f) => {
       if (filterGroup && f.groupName !== filterGroup) return false;
+      // "No pick yet" — upcoming fixtures I haven't picked (excludes finished games)
       if (filterNoPick && (pickMap[f.id] ?? f.myPickSide)) return false;
+      if (filterNoPick && f.status === 'FINAL') return false;
+      // "Pickable only" — strictly actionable right now: my turn, not locked, not finished, not yet picked
       if (filterPickable) {
-        // "Pickable only" = unlocked AND assigned to me
+        if (f.status === 'FINAL') return false;
+        if (f.isLocked) return false;
+        if (pickMap[f.id] ?? f.myPickSide) return false;
         const hasPickOrder = Object.keys(pickOrder).length > 0;
         const isMyFixture = !hasPickOrder || pickOrder[f.id] === myParticipantId;
-        if (f.isLocked || !isMyFixture) return false;
+        if (!isMyFixture) return false;
       }
       return true;
     });
   }, [fixtures, filterGroup, filterNoPick, filterPickable, pickMap, pickOrder, myParticipantId]);
+
+  // Total fixtures visible in the feed across ALL rounds (current + completed)
+  const totalVisibleCount = useMemo(() => {
+    const completedCount = Object.values(completedRoundFixtures)
+      .reduce((sum, arr) => sum + arr.length, 0);
+    return visibleFixtures.length + completedCount;
+  }, [visibleFixtures.length, completedRoundFixtures]);
 
   const selectedMatchup = useMemo(
     () => matchups.find((m) => m.matchupId === selectedMatchupId) ?? null,
@@ -214,6 +228,17 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     }
     return { total: unpicked.length, urgent, soon, later };
   }, [fixtures, pickMap, pickOrder, myParticipantId]);
+
+  // First unpicked fixture that is my turn to pick (used for mobile auto-scroll)
+  const nextPickFixtureId = useMemo(() => {
+    const hasPickOrder = Object.keys(pickOrder).length > 0;
+    const candidate = visibleFixtures.find((f) => {
+      const myPick = pickMap[f.id] ?? f.myPickSide;
+      const isMyF  = !hasPickOrder || pickOrder[f.id] === myParticipantId;
+      return !myPick && isMyF && !f.isLocked && f.status !== 'FINAL';
+    });
+    return candidate?.id ?? null;
+  }, [visibleFixtures, pickMap, pickOrder, myParticipantId]);
 
   // ── Notice ─────────────────────────────────────────────────────────────────
 
@@ -268,6 +293,17 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     loadCurrentRoundAndFixtures(undefined);
     loadMatchups();
     loadProfile();
+
+    // If the user tapped a "Pick Now" notification, activate the Pick Now filter
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('filter') === 'pick-now') {
+        setFilterPickable(true);
+        // Remove the param from the URL without a reload
+        const clean = window.location.pathname;
+        window.history.replaceState({}, '', clean);
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -284,7 +320,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     // Reload fixtures with pick data overlaid + load standings for topbar H2H
     loadCurrentRoundAndFixtures(selectedMatchupId);
     loadStandings(selectedMatchupId);
-    setMobileView('content');
+    setMobileView('feed');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMatchupId]);
 
@@ -398,6 +434,27 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     container.scrollTo({ top: offset, behavior: 'smooth' });
   }, [selectedFixtureId]);
 
+  // On mobile: auto-scroll the fixture list to the next unpicked fixture once per matchup load
+  useEffect(() => {
+    if (!nextPickFixtureId || !visibleFixtures.length) return;
+    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
+    // Only fire once per matchup — don't re-scroll every time a pick is made
+    if (autoScrolledMatchup.current === selectedMatchupId) return;
+    autoScrolledMatchup.current = selectedMatchupId ?? null;
+    // Delay to ensure React has committed all fixture rows to the DOM
+    const timer = setTimeout(() => {
+      const container = feedScrollRef.current;
+      if (!container) return;
+      const el = container.querySelector<HTMLElement>(`[data-fixture-id="${nextPickFixtureId}"]`);
+      if (!el) return;
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const scrollTop = container.scrollTop + (elRect.top - containerRect.top) - containerRect.height / 3;
+      container.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [nextPickFixtureId, visibleFixtures.length, selectedMatchupId]);
+
   // Register service worker and check existing push subscription
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
@@ -450,7 +507,19 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       setFirstName(parts[0] ?? '');
       setLastName(parts.slice(1).join(' '));
       setDefaultPickSide(payload.defaultPickSide ?? 'HOME');
+      if (payload.notificationPreferences) {
+        setNotificationPreferences(payload.notificationPreferences);
+      }
     }
+  }
+
+  async function saveNotificationPreferences(prefs: import('@/app/components/profile-settings').NotificationPreferences) {
+    setNotificationPreferences(prefs);
+    await fetch('/api/user/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notificationPreferences: prefs }),
+    }).catch(() => {});
   }
 
   async function loadMatchups() {
@@ -466,6 +535,10 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     setMatchups(rows);
     if (!selectedMatchupId && rows[0]?.matchupId) {
       setSelectedMatchupId(rows[0].matchupId);
+    }
+    // On mobile: if multiple matchups, show the lobby; otherwise stay on feed
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      if (rows.length > 1) setMobileView('home');
     }
     setLoading(false);
   }
@@ -1427,13 +1500,20 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             <path d="M5.5 5 L9 7 L5.5 9 Z" fill="var(--text-2)"/>
           </svg>
         );
-        // Whistle for Full Time / End of Extra Time
+        // Checkered flag for Full Time / End of Extra Time
         return (
-          <svg width="15" height="13" viewBox="0 0 16 13" fill="none" aria-hidden="true">
-            <circle cx="5.5" cy="6.5" r="4" stroke="var(--text-2)" strokeWidth="1.5"/>
-            <path d="M9.5 4.5 L14 3" stroke="var(--text-2)" strokeWidth="1.5" strokeLinecap="round"/>
-            <path d="M13.5 2.5 L14.5 2.5 L14.5 4.5 L13.5 4.5" stroke="var(--text-2)" strokeWidth="1.3" strokeLinejoin="round"/>
-            <circle cx="5.5" cy="6.5" r="1.5" fill="var(--text-2)" opacity="0.4"/>
+          <svg width="15" height="12" viewBox="0 0 15 12" fill="none" aria-hidden="true">
+            {/* Pole */}
+            <line x1="1.5" y1="1" x2="1.5" y2="11" stroke="var(--text-2)" strokeWidth="1.5" strokeLinecap="round"/>
+            {/* Flag background */}
+            <rect x="2" y="1" width="13" height="6" rx="1" fill="var(--text-0)"/>
+            {/* Checkered squares — 3 cols × 2 rows */}
+            <rect x="2"    y="1" width="4.3" height="3" fill="white"/>
+            <rect x="6.3"  y="1" width="4.3" height="3" fill="var(--text-0)"/>
+            <rect x="10.6" y="1" width="4.4" height="3" fill="white"/>
+            <rect x="2"    y="4" width="4.3" height="3" fill="var(--text-0)"/>
+            <rect x="6.3"  y="4" width="4.3" height="3" fill="white"/>
+            <rect x="10.6" y="4" width="4.4" height="3" fill="var(--text-0)"/>
           </svg>
         );
       }
@@ -1466,6 +1546,12 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           </svg>
         );
       }
+      // Injury break — red cross
+      if (detail.toLowerCase().includes('injury')) return (
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M6 1.5 L6 10.5 M1.5 6 L10.5 6" stroke="var(--danger)" strokeWidth="2.5" strokeLinecap="round"/>
+        </svg>
+      );
       return <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-2)' }}>VAR</span>;
     }
 
@@ -1480,17 +1566,33 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
         {/* ── Match timeline ──────────────────────────────────────────── */}
         {timeline.length > 0 && (() => {
+          // Pre-calculate running score at each goal event (by position in enhancedTimeline)
+          const runningScores = new Map<number, string>();
+          let rHome = 0, rAway = 0;
+          enhancedTimeline.forEach((ev, i) => {
+            const t = ev.type.toLowerCase();
+            if (t === 'goal' && !ev.detail.includes('Missed') && !ev.detail.toLowerCase().includes('saved')) {
+              const isOG = ev.detail.includes('Own Goal');
+              // Own goal: scored against the team that conceded it
+              if (!isOG) { if (ev.team === homeTeam) rHome++; else rAway++; }
+              else        { if (ev.team === homeTeam) rAway++; else rHome++; }
+              runningScores.set(i, `${rHome}-${rAway}`);
+            }
+          });
+
           // Helper: render a single event row
           function EventRow({ ev, i }: { ev: TLItem; i: number }) {
             const t = ev.type.toLowerCase();
             const isHome      = ev.team === homeTeam;
             const min         = ev.extraMinute ? `${ev.minute}+${ev.extraMinute}'` : `${ev.minute}'`;
+            const goalScore   = runningScores.get(i) ?? null;
             const isGoal      = t === 'goal';
             const isCard      = t === 'card';
             const isSub       = t === 'subst';
             const isVar       = t === 'var';
             const isPenalty   = ev.detail.toLowerCase().includes('penalty');
-            const isMissedPen = (isGoal || isVar) && (ev.detail.includes('Missed') || ev.detail.toLowerCase().includes('saved'));
+            const isInjury    = isVar && ev.detail.toLowerCase().includes('injury');
+            const isMissedPen = (isGoal || isVar) && !isInjury && (ev.detail.includes('Missed') || ev.detail.toLowerCase().includes('saved'));
             const iconCls     = `wc-timeline-icon${
               isMissedPen ? ' wc-timeline-icon--red'
               : isGoal    ? ' wc-timeline-icon--goal'
@@ -1515,7 +1617,10 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                         {isMissedPen ? 'MISSED PENALTY' : 'PENALTY'}
                       </span>
                     )}
-                    {ev.assist && !isPenalty && <span className="wc-timeline-assist">↳ {ev.assist}</span>}
+                    {isInjury && (
+                      <span className="wc-timeline-event-type wc-timeline-event-type--missed">INJURY BREAK</span>
+                    )}
+                    {ev.assist && !isPenalty && !isInjury && <span className="wc-timeline-assist">↳ {ev.assist}</span>}
                   </>
                 )}
               </div>
@@ -1523,13 +1628,29 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             return (
               <div key={i} className="wc-timeline-row">
                 <div className="wc-timeline-side wc-timeline-side--home">
-                  {isHome ? detail : <span className="wc-timeline-min wc-timeline-min--side">{min}</span>}
+                  {isHome ? detail : (
+                    goalScore
+                      /* Away goal: score LEFT of minute (outer edge = left) */
+                      ? <span className="wc-timeline-min-wrap wc-timeline-min-wrap--away">
+                          <span className="wc-timeline-goal-score">{goalScore}</span>
+                          <span className="wc-timeline-min wc-timeline-min--side">{min}</span>
+                        </span>
+                      : <span className="wc-timeline-min wc-timeline-min--side">{min}</span>
+                  )}
                 </div>
                 <div className="wc-timeline-centre">
                   <div className={iconCls}><TimelineIcon type={ev.type} detail={ev.detail} /></div>
                 </div>
                 <div className="wc-timeline-side wc-timeline-side--away">
-                  {!isHome ? detail : <span className="wc-timeline-min wc-timeline-min--side">{min}</span>}
+                  {!isHome ? detail : (
+                    goalScore
+                      /* Home goal: score RIGHT of minute (outer edge = right) */
+                      ? <span className="wc-timeline-min-wrap wc-timeline-min-wrap--home">
+                          <span className="wc-timeline-min wc-timeline-min--side">{min}</span>
+                          <span className="wc-timeline-goal-score">{goalScore}</span>
+                        </span>
+                      : <span className="wc-timeline-min wc-timeline-min--side">{min}</span>
+                  )}
                 </div>
               </div>
             );
@@ -1637,8 +1758,11 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             aria-expanded={tournamentMenuOpen}
             aria-label="Switch tournament"
           >
-            <span className="wc-topbar-brand-name">
+            <span className="wc-topbar-brand-name wc-topbar-brand-name--full">
               {tournamentLabel.split("'")[0].trim()}
+            </span>
+            <span className="wc-topbar-brand-name wc-topbar-brand-name--short">
+              {tournamentLabel.split(' ')[0]}
             </span>
             <span className="wc-topbar-brand-year">
               &apos;{tournamentLabel.split("'")[1] ?? '26'}
@@ -1901,7 +2025,9 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             <span className="wc-feed-title">Fixtures</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               {hasLiveFixtures && <span className="wc-live-badge">🔴</span>}
-              <span className="wc-feed-count">{visibleFixtures.length}</span>
+              {(filterGroup || filterNoPick || filterPickable) && (
+                <span className="wc-feed-count">{totalVisibleCount}</span>
+              )}
 
               {/* Filter button + flyout */}
               {fixtures.length > 0 && (
@@ -1925,6 +2051,23 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
                   {filterOpen && (
                     <div className="wc-filter-flyout">
+
+                      <button
+                        className={`wc-filter-option${filterPickable ? ' wc-filter-option--selected' : ''}`}
+                        onClick={() => { setFilterPickable((v) => !v); }}
+                      >
+                        {filterPickable ? '✓ ' : ''}Pick Now
+                      </button>
+
+                      <button
+                        className={`wc-filter-option${filterNoPick ? ' wc-filter-option--selected' : ''}`}
+                        onClick={() => { setFilterNoPick((v) => !v); }}
+                      >
+                        {filterNoPick ? '✓ ' : ''}Picks Pending
+                      </button>
+
+                      <div className="wc-filter-divider" />
+
                       <div className="wc-filter-section-label">Group</div>
                       <div className="wc-filter-options">
                         <button
@@ -1939,22 +2082,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                           >Group {g}</button>
                         ))}
                       </div>
-
-                      <div className="wc-filter-divider" />
-
-                      <button
-                        className={`wc-filter-option${filterNoPick ? ' wc-filter-option--selected' : ''}`}
-                        onClick={() => { setFilterNoPick((v) => !v); }}
-                      >
-                        {filterNoPick ? '✓ ' : ''}No pick yet
-                      </button>
-
-                      <button
-                        className={`wc-filter-option${filterPickable ? ' wc-filter-option--selected' : ''}`}
-                        onClick={() => { setFilterPickable((v) => !v); }}
-                      >
-                        {filterPickable ? '✓ ' : ''}Pickable only
-                      </button>
 
                       {(filterGroup || filterNoPick || filterPickable) && (
                         <>
@@ -2372,24 +2499,173 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
 
       {/* Mobile bottom nav */}
       <nav className="wc-mobile-nav" aria-label="Mobile navigation">
+
+        {/* Matches — lobby if 2+ matchups, else straight to feed */}
         <button
           className="wc-mobile-nav-btn"
-          aria-pressed={mobileView === 'feed'}
-          onClick={() => setMobileView('feed')}
+          aria-pressed={mobileView === 'home' || mobileView === 'feed' || mobileView === 'content'}
+          onClick={() => {
+            if (matchups.length > 1) setMobileView('home');
+            else setMobileView('feed');
+          }}
         >
-          <span>📋</span>
-          <span>Fixtures</span>
+          {/* Soccer ball — outline monocolor */}
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.6"/>
+            <path d="M10 2v2.8m0 0l2.6 1.9m-2.6-1.9L7.4 6.7m5.2 0l.9 2.8m0 0H6.5m6.8 0L11.8 12m-6.3-2.5l-.9 2.8 1.5 2.2m6.9-5 1.5 2.2m-8.4 0l1.9 1.7m4.6 0l-1.9 1.7m-2.7 0h2.7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span>Matches</span>
         </button>
+
+        {/* Chat */}
         <button
           className="wc-mobile-nav-btn"
-          aria-pressed={mobileView === 'content'}
-          disabled={!selectedMatchupId}
-          onClick={() => setMobileView('content')}
+          aria-pressed={mobileView === 'chat'}
+          onClick={() => setMobileView(mobileView === 'chat' ? 'feed' : 'chat')}
+          style={{ position: 'relative' }}
         >
-          <span>{hasLiveFixtures ? '🔴' : '🏟️'}</span>
-          <span>Detail</span>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M3 4h14a1 1 0 011 1v8a1 1 0 01-1 1H6l-4 3V5a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
+          </svg>
+          {totalUnread > 0 && <span className="wc-mobile-nav-badge">{totalUnread > 9 ? '9+' : totalUnread}</span>}
+          <span>Chat</span>
+        </button>
+
+        {/* Profile — uses the user's own avatar as the icon */}
+        <button
+          className="wc-mobile-nav-btn wc-mobile-nav-btn--profile"
+          aria-pressed={mobileView === 'profile'}
+          onClick={() => setMobileView(mobileView === 'profile' ? 'feed' : 'profile')}
+        >
+          {userAvatarUrl
+            ? <img src={userAvatarUrl} alt="Profile" className="wc-mobile-nav-avatar" referrerPolicy="no-referrer" />
+            : <span className="wc-mobile-nav-avatar wc-mobile-nav-avatar--initials">
+                {(displayName || userEmail).charAt(0).toUpperCase()}
+              </span>
+          }
+          <span>Profile</span>
         </button>
       </nav>
+
+      {/* ── Mobile: Home lobby (2+ matchups) ─────────────────────────────────── */}
+      {mobileView === 'home' && (
+        <div className="wc-mobile-overlay">
+          <div className="wc-mobile-overlay-nav">
+            <span className="wc-mobile-overlay-title">Your Matchups</span>
+          </div>
+          <div className="wc-mobile-overlay-body">
+            {matchups.length === 0 && (
+              <p className="wc-subtitle" style={{ padding: '24px 16px' }}>No matchups yet. Create one to get started.</p>
+            )}
+            {matchups.map((m) => {
+              const oppName = m.opponentDisplayName ?? m.opponentEmail?.split('@')[0] ?? 'Pending';
+              const oppInit = initials(oppName);
+              const isActive = m.matchupId === selectedMatchupId;
+              return (
+                <button
+                  key={m.matchupId}
+                  className={`wc-matchup-lobby-card${isActive ? ' wc-matchup-lobby-card--active' : ''}`}
+                  onClick={() => {
+                    setSelectedMatchupId(m.matchupId);
+                    setMobileView('feed');
+                  }}
+                >
+                  <div className="wc-matchup-lobby-avatar">
+                    {m.opponentAvatarUrl
+                      ? <img src={m.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
+                      : <span>{oppInit}</span>}
+                  </div>
+                  <div className="wc-matchup-lobby-info">
+                    <span className="wc-matchup-lobby-name">vs {oppName}</span>
+                    <span className="wc-matchup-lobby-sub">FIFA World Cup &apos;26</span>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="wc-matchup-lobby-chevron">
+                    <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Mobile: Chat full-screen ──────────────────────────────────────────── */}
+      {mobileView === 'chat' && (
+        <div className="wc-mobile-overlay">
+          <div className="wc-mobile-overlay-nav">
+            <button className="wc-topbar-icon-btn" aria-label="Back" onClick={() => setMobileView('feed')}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <span className="wc-mobile-overlay-title">
+              {selectedMatchup?.opponentDisplayName ?? selectedMatchup?.opponentEmail?.split('@')[0] ?? 'Chat'}
+            </span>
+            <div style={{ width: 34 }} />
+          </div>
+          <div className="wc-mobile-overlay-body wc-mobile-overlay-body--chat">
+            {selectedMatchupId && myAppUserId && selectedMatchup?.opponentEmail ? (
+              <ChatPanel
+                matchupId={selectedMatchupId}
+                myAppUserId={myAppUserId}
+                myAvatarUrl={userAvatarUrl ?? null}
+                opponentDisplayName={selectedMatchup.opponentDisplayName ?? null}
+                opponentEmail={selectedMatchup.opponentEmail}
+                opponentAvatarUrl={selectedMatchup.opponentAvatarUrl ?? null}
+                onMarkRead={() => {
+                  fetch('/api/messages/unread-count', { cache: 'no-store' })
+                    .then(r => r.json()).then(d => { if (d.ok) setTotalUnread(d.total ?? 0); }).catch(() => {});
+                }}
+                onPresenceChange={(online) => setOpponentOnline(online)}
+              />
+            ) : (
+              <p className="wc-subtitle" style={{ padding: '24px 16px' }}>
+                {!selectedMatchupId ? 'Select a matchup to open chat.' : 'Chat available once your opponent joins.'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Mobile: Profile full-screen ───────────────────────────────────────── */}
+      {mobileView === 'profile' && (
+        <div className="wc-mobile-overlay">
+          <div className="wc-mobile-overlay-nav">
+            <button className="wc-topbar-icon-btn" aria-label="Back" onClick={() => setMobileView('feed')}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <span className="wc-mobile-overlay-title">Profile</span>
+            <div style={{ width: 34 }} />
+          </div>
+          <div className="wc-mobile-overlay-body">
+            <ProfileSettings
+              userEmail={userEmail}
+              userAvatarUrl={userAvatarUrl}
+              displayName={displayName}
+              firstName={firstName}
+              lastName={lastName}
+              savingName={savingName}
+              defaultPickSide={defaultPickSide}
+              savingDefaultPick={savingDefaultPick}
+              pushSupported={pushSupported}
+              pushEnabled={pushEnabled}
+              pushLoading={pushLoading}
+              theme={theme}
+              onFirstNameChange={setFirstName}
+              onLastNameChange={setLastName}
+              onNameBlur={handleNameBlur}
+              onDefaultPickSide={saveDefaultPickSide}
+              onTogglePush={togglePush}
+              notificationPreferences={notificationPreferences}
+              onNotificationPrefsChange={saveNotificationPreferences}
+              onThemeChange={changeTheme}
+              onSignOut={signOut}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Score chart modal */}
       {scoreChartOpen && selectedMatchup && (
@@ -2433,7 +2709,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             </div>
             <PickSummaryContent
               stats={pickSummaryStats}
-              onShowUnpicked={() => { setPickSummaryOpen(false); setFilterNoPick(true); }}
+              onShowUnpicked={() => { setPickSummaryOpen(false); setFilterPickable(true); }}
               onDismiss={() => setPickSummaryOpen(false)}
             />
           </div>
@@ -2478,6 +2754,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               onNameBlur={handleNameBlur}
               onDefaultPickSide={saveDefaultPickSide}
               onTogglePush={togglePush}
+              notificationPreferences={notificationPreferences}
+              onNotificationPrefsChange={saveNotificationPreferences}
               onThemeChange={changeTheme}
               onSignOut={signOut}
             />

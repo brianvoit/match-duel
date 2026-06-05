@@ -48,6 +48,11 @@ Deno.serve(async (req: Request) => {
     let sent = 0;
 
     for (const event of pending) {
+      // Enrich URL for actionable notifications so tapping opens the right view
+      if (event.event_type === 'PICKS_DUE_SOON' && event.payload?.url === '/play') {
+        event.payload.url = '/play?filter=pick-now';
+      }
+
       const { data: subs } = await db
         .from('notification_subscription')
         .select('id, endpoint, p256dh, auth_secret')

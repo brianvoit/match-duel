@@ -1,11 +1,21 @@
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { FixtureSyncPayload, ProviderFixture } from '@/lib/jobs/fixtureProvider';
 
+export interface NewlyFinalFixture {
+  id: string;           // internal UUID
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  roundId: string;
+}
+
 interface SyncResult {
   createdCount: number;
   updatedCount: number;
   processedCount: number;
   dryRun: boolean;
+  newlyFinal: NewlyFinalFixture[];
 }
 
 function toDbFixtureRow(fixture: ProviderFixture) {
@@ -41,21 +51,30 @@ export async function runFixtureSync(payload: FixtureSyncPayload): Promise<SyncR
   }));
 
   let existingByProviderId = new Set<string>();
+  // Track pre-sync status so we can detect FINAL transitions
+  const preSyncStatusByProviderId = new Map<string, string>();
+  const preSyncIdByProviderId = new Map<string, string>();
+  const preSyncRoundIdByProviderId = new Map<string, string>();
   let existingByNaturalKey = new Set<string>();
 
   if (allProviderIds.length > 0) {
     const { data, error } = await service
       .from('fixture')
-      .select('external_provider_id')
+      .select('id, external_provider_id, status, round_id')
       .in('external_provider_id', allProviderIds);
 
     if (error) {
       throw new Error(`Failed to lookup existing provider-id fixtures: ${error.message}`);
     }
 
-    existingByProviderId = new Set(
-      (data ?? []).map((row) => row.external_provider_id).filter((value): value is string => Boolean(value))
-    );
+    for (const row of (data ?? []) as Array<{ id: string; external_provider_id: string; status: string; round_id: string }>) {
+      if (row.external_provider_id) {
+        existingByProviderId.add(row.external_provider_id);
+        preSyncStatusByProviderId.set(row.external_provider_id, row.status);
+        preSyncIdByProviderId.set(row.external_provider_id, row.id);
+        preSyncRoundIdByProviderId.set(row.external_provider_id, row.round_id);
+      }
+    }
   }
 
   if (allNaturalKeys.length > 0) {
@@ -87,6 +106,8 @@ export async function runFixtureSync(payload: FixtureSyncPayload): Promise<SyncR
 
   const createdCount = countCreatedByProvider + countCreatedByNatural;
 
+  const newlyFinal: NewlyFinalFixture[] = [];
+
   if (!payload.dryRun) {
     if (fixturesWithProviderId.length > 0) {
       for (const fixture of fixturesWithProviderId) {
@@ -95,18 +116,29 @@ export async function runFixtureSync(payload: FixtureSyncPayload): Promise<SyncR
 
         if (existingByProviderId.has(providerId)) {
           const { error } = await service.from('fixture').update(dbRow).eq('external_provider_id', providerId);
+          if (error) throw new Error(`Failed provider-id fixture update: ${error.message}`);
 
-          if (error) {
-            throw new Error(`Failed provider-id fixture update: ${error.message}`);
+          // Detect FINAL transition
+          const prevStatus = preSyncStatusByProviderId.get(providerId);
+          if (fixture.status === 'FINAL' && prevStatus && prevStatus !== 'FINAL') {
+            const fixtureId = preSyncIdByProviderId.get(providerId);
+            const roundId   = preSyncRoundIdByProviderId.get(providerId);
+            if (fixtureId && roundId) {
+              newlyFinal.push({
+                id: fixtureId,
+                homeTeam:  fixture.homeTeam,
+                awayTeam:  fixture.awayTeam,
+                homeScore: fixture.homeScore ?? null,
+                awayScore: fixture.awayScore ?? null,
+                roundId,
+              });
+            }
           }
           continue;
         }
 
         const { error } = await service.from('fixture').insert(dbRow);
-
-        if (error) {
-          throw new Error(`Failed provider-id fixture insert: ${error.message}`);
-        }
+        if (error) throw new Error(`Failed provider-id fixture insert: ${error.message}`);
       }
     }
 
@@ -128,6 +160,7 @@ export async function runFixtureSync(payload: FixtureSyncPayload): Promise<SyncR
     processedCount: payload.fixtures.length,
     createdCount,
     updatedCount: payload.fixtures.length - createdCount,
-    dryRun: payload.dryRun
+    dryRun: payload.dryRun,
+    newlyFinal,
   };
 }
