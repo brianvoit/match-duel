@@ -2983,7 +2983,7 @@ select {
 }
 
 .wc-pm-table-team { text-align: left !important; }
-.wc-pm-table-highlight td { color: var(--text-0); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.wc-pm-table-highlight td { color: var(--text-0); }
 .wc-pm-table tr:last-child td { border-bottom: none; }
 
 /* Form & Goals */
@@ -3084,8 +3084,9 @@ select {
 .wc-pm-comp-label {
   flex: 1;
   text-align: center;
-  font-size: 0.72rem;
-  color: var(--text-1);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-0);
 }
 
 .wc-pm-comp-val { font-size: 0.75rem; font-weight: 700; min-width: 32px; }
@@ -3746,7 +3747,7 @@ select {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-1);
-  margin: 0;
+  margin: 20px 0 0 0;
 }
 
 @media (min-width: 1024px) {

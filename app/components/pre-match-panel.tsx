@@ -124,7 +124,7 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
       <div className="wc-fd-section">
         <SectionLabel>Style Comparison</SectionLabel>
         <CompBar label="Attack"  home={comparison?.att.home ?? 0}  away={comparison?.att.away ?? 0} />
-        <CompBar label="Defence" home={comparison?.def.home ?? 0}  away={comparison?.def.away ?? 0} />
+        <CompBar label="Defense" home={comparison?.def.home ?? 0}  away={comparison?.def.away ?? 0} />
       </div>
 
       {/* ── Goalscorers (fixture teams only) ──────────────────────────── */}
