@@ -110,29 +110,64 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   // ── Standings ──────────────────────────────────────────────────────────────
   let standings: PreMatchData['standings'] = null;
   const groupLetter = fixture.group_name; // "A", "B", etc.
-  if (standRaw && groupLetter) {
-    // API returns standings grouped per group; find the matching group
-    const allGroups: Array<{ group: string; all: unknown[] }> = Array.isArray(standRaw)
-      ? standRaw.flat()
-      : [];
-    const targetGroup = allGroups.find(g =>
-      g.group === `Group ${groupLetter}` || g.group === groupLetter
-    );
-    if (targetGroup) {
-      const rows: GroupStandingRow[] = (targetGroup.all as Array<{
-        team: { name: string };
-        all: { played: number; win: number; draw: number; lose: number };
-        goals: { for: number; against: number };
-        goalsDiff: number; points: number;
-      }>).map(r => ({
-        teamName: r.team.name,
-        played: r.all.played, won: r.all.win, drawn: r.all.draw, lost: r.all.lose,
-        goalsFor: r.goals.for, goalsAgainst: r.goals.against,
-        goalDiff: r.goalsDiff, points: r.points,
-        isHome: r.team.name === fixture.home_team,
-        isAway: r.team.name === fixture.away_team,
-      }));
-      standings = { group: `Group ${groupLetter}`, rows };
+
+  if (groupLetter) {
+    // Try to find live standings from the API first
+    let liveRows: GroupStandingRow[] | null = null;
+    if (standRaw) {
+      const allGroups: Array<{ group: string; all: unknown[] }> = Array.isArray(standRaw)
+        ? standRaw.flat()
+        : [];
+      const targetGroup = allGroups.find(g =>
+        g.group === `Group ${groupLetter}` || g.group === groupLetter
+      );
+      if (targetGroup) {
+        liveRows = (targetGroup.all as Array<{
+          team: { name: string };
+          all: { played: number; win: number; draw: number; lose: number };
+          goals: { for: number; against: number };
+          goalsDiff: number; points: number;
+        }>).map(r => ({
+          teamName: r.team.name,
+          played: r.all.played, won: r.all.win, drawn: r.all.draw, lost: r.all.lose,
+          goalsFor: r.goals.for, goalsAgainst: r.goals.against,
+          goalDiff: r.goalsDiff, points: r.points,
+          isHome: r.team.name === fixture.home_team,
+          isAway: r.team.name === fixture.away_team,
+        }));
+      }
+    }
+
+    if (liveRows && liveRows.length > 0) {
+      // Sort: points desc → goal diff desc → alphabetical (so all-zero sorts A-Z)
+      liveRows.sort((a, b) =>
+        b.points - a.points || b.goalDiff - a.goalDiff || a.teamName.localeCompare(b.teamName)
+      );
+      standings = { group: `Group ${groupLetter}`, rows: liveRows };
+    } else {
+      // Build a zero-filled placeholder from our own DB (all teams in this group)
+      const { data: groupFixtures } = await service
+        .from('fixture')
+        .select('home_team, away_team')
+        .eq('round_id', fixture.round_id)
+        .eq('group_name', groupLetter);
+
+      const teamSet = new Set<string>();
+      for (const f of (groupFixtures ?? [])) {
+        teamSet.add(f.home_team);
+        teamSet.add(f.away_team);
+      }
+      const placeholderRows: GroupStandingRow[] = [...teamSet]
+        .sort()
+        .map(name => ({
+          teamName: name, played: 0, won: 0, drawn: 0, lost: 0,
+          goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0,
+          isHome: name === fixture.home_team,
+          isAway: name === fixture.away_team,
+        }));
+      if (placeholderRows.length > 0) {
+        standings = { group: `Group ${groupLetter}`, rows: placeholderRows };
+      }
     }
   }
 

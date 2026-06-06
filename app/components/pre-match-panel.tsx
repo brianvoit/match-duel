@@ -17,12 +17,15 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <h3 className="wc-fd-section-label" style={{ marginBottom: 8 }}>{children}</h3>;
 }
 
-function tugPct(home: number, away: number) {
-  const total = home + away;
-  return total ? (home / total) * 100 : 50;
-}
 
 function FormPill({ result, opacity }: { result: string; opacity: number }) {
+  if (result === 'X') {
+    return (
+      <span className="wc-form-pill wc-form-pill--empty" style={{ opacity }}>
+        X
+      </span>
+    );
+  }
   const bg = result === 'W' ? 'var(--ok)' : result === 'D' ? 'var(--text-2)' : 'var(--danger)';
   return (
     <span className="wc-form-pill" style={{ background: bg, opacity }}>
@@ -31,21 +34,28 @@ function FormPill({ result, opacity }: { result: string; opacity: number }) {
   );
 }
 
-/** Form row — W/D/L pills only, no bar.
- *  Home: oldest → newest (newest rightmost, closest to center label)
- *  Away: newest → oldest (newest leftmost, closest to center label)
- *  Opacity fades from 40% (oldest) → 100% (newest) so recency is obvious.
+/** Pad a form string to exactly 5 entries, prepending 'X' for unknown oldest results.
+ *  Returns oldest-first array, e.g. "WW" → ['X','X','X','W','W']
+ */
+function padForm(s: string): string[] {
+  const chars = s.split('').filter(c => 'WDL'.includes(c)).slice(-5);
+  while (chars.length < 5) chars.unshift('X');
+  return chars;
+}
+
+/** Form row — W/D/L pills always shown (X = no data yet).
+ *  Home: oldest → newest left-to-right (newest rightmost, closest to center)
+ *  Away: newest → oldest left-to-right (newest leftmost, closest to center)
+ *  Opacity fades from 35% (oldest) → 100% (newest).
  */
 function FormRow({ homeForm, awayForm }: { homeForm: string; awayForm: string }) {
-  const home = homeForm.split('').slice(-5);
-  const away = awayForm.split('').slice(-5).reverse(); // newest first
+  const home = padForm(homeForm);                  // oldest first
+  const away = [...padForm(awayForm)].reverse();   // newest first
   const steps = 5;
-  const opacity = (i: number, newest: boolean) => {
-    // newest=true: index 0 is newest (full), index 4 is oldest (dim)
-    // newest=false: index 4 is newest (full), index 0 is oldest (dim)
-    const rank = newest ? i : steps - 1 - i;
-    return 0.35 + (rank / (steps - 1)) * 0.65;
-  };
+  // home: i=0 oldest (dim) → i=4 newest (full)
+  const homeOpacity = (i: number) => 0.35 + (i / (steps - 1)) * 0.65;
+  // away: i=0 newest (full) → i=4 oldest (dim)
+  const awayOpacity = (i: number) => 0.35 + ((steps - 1 - i) / (steps - 1)) * 0.65;
   return (
     <div className="wc-pm-comp-row">
       <div className="wc-pm-comp-header">
@@ -55,10 +65,10 @@ function FormRow({ homeForm, awayForm }: { homeForm: string; awayForm: string })
       </div>
       <div className="wc-form-pills-row">
         <div className="wc-form-pills">
-          {home.map((ch, i) => <FormPill key={i} result={ch} opacity={opacity(i, false)} />)}
+          {home.map((ch, i) => <FormPill key={i} result={ch} opacity={homeOpacity(i)} />)}
         </div>
         <div className="wc-form-pills wc-form-pills--away">
-          {away.map((ch, i) => <FormPill key={i} result={ch} opacity={opacity(i, true)} />)}
+          {away.map((ch, i) => <FormPill key={i} result={ch} opacity={awayOpacity(i)} />)}
         </div>
       </div>
     </div>
@@ -88,8 +98,7 @@ function CompBar({ label, home, away }: { label: string; home: number; away: num
 export function PreMatchPanel({ data }: PreMatchPanelProps) {
   const { homeTeam, awayTeam, predictions, standings, injuries, odds, topScorers, comparison } = data;
 
-  const hasSomething = predictions || standings || injuries || odds || topScorers || comparison;
-  if (!hasSomething) return null;
+  // Form + Style Comparison always render (with placeholders), so the panel is always shown.
 
   return (
     <div className="wc-pm-panel">
@@ -141,34 +150,6 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
         </div>
       )}
 
-      {/* ── Group Standings ────────────────────────────────────────────── */}
-      {standings && (
-        <div className="wc-fd-section">
-          <SectionLabel>{standings.group} Standings</SectionLabel>
-          <table className="wc-pm-table">
-            <thead>
-              <tr>
-                <th>Team</th>
-                <th>P</th><th>W</th><th>D</th><th>L</th>
-                <th>GD</th><th>Pts</th>
-              </tr>
-            </thead>
-            <tbody>
-              {standings.rows.map(r => (
-                <tr key={r.teamName} className={r.isHome || r.isAway ? 'wc-pm-table-highlight' : ''}>
-                  <td className="wc-pm-table-team">
-                    {r.isHome || r.isAway ? <strong>{r.teamName}</strong> : r.teamName}
-                  </td>
-                  <td>{r.played}</td><td>{r.won}</td><td>{r.drawn}</td><td>{r.lost}</td>
-                  <td>{r.goalDiff > 0 ? `+${r.goalDiff}` : r.goalDiff}</td>
-                  <td><strong>{r.points}</strong></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
       {/* Form & Goals section removed */}
 
       {/* ── Injuries & Suspensions ─────────────────────────────────────── */}
@@ -194,17 +175,16 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
         </div>
       )}
 
-      {/* ── Style Comparison — no team labels, side implies team ───────── */}
-      {comparison && (
-        <div className="wc-fd-section">
-          <SectionLabel>Style Comparison</SectionLabel>
-          {(predictions?.homeForm || predictions?.awayForm) && (
-            <FormRow homeForm={predictions?.homeForm ?? ''} awayForm={predictions?.awayForm ?? ''} />
-          )}
-          <CompBar label="Attack"  home={comparison.att.home}  away={comparison.att.away} />
-          <CompBar label="Defence" home={comparison.def.home}  away={comparison.def.away} />
-        </div>
-      )}
+      {/* ── Form + Style Comparison — always rendered (X pills / 0% bars until data arrives) */}
+      <div className="wc-fd-section">
+        <FormRow
+          homeForm={predictions?.homeForm ?? ''}
+          awayForm={predictions?.awayForm ?? ''}
+        />
+        <SectionLabel>Style Comparison</SectionLabel>
+        <CompBar label="Attack"  home={comparison?.att.home ?? 0}  away={comparison?.att.away ?? 0} />
+        <CompBar label="Defence" home={comparison?.def.home ?? 0}  away={comparison?.def.away ?? 0} />
+      </div>
 
       {/* ── Goalscorers (fixture teams only) ──────────────────────────── */}
       {(() => {
@@ -234,6 +214,34 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
           </div>
         );
       })()}
+
+      {/* ── Group Standings (last, sits just above Previous Meetings) ───── */}
+      {standings && (
+        <div className="wc-fd-section">
+          <SectionLabel>{standings.group} Standings</SectionLabel>
+          <table className="wc-pm-table">
+            <thead>
+              <tr>
+                <th>Team</th>
+                <th>P</th><th>W</th><th>D</th><th>L</th>
+                <th>GD</th><th>Pts</th>
+              </tr>
+            </thead>
+            <tbody>
+              {standings.rows.map(r => (
+                <tr key={r.teamName} className={r.isHome || r.isAway ? 'wc-pm-table-highlight' : ''}>
+                  <td className="wc-pm-table-team">
+                    {r.isHome || r.isAway ? <strong>{r.teamName}</strong> : r.teamName}
+                  </td>
+                  <td>{r.played}</td><td>{r.won}</td><td>{r.drawn}</td><td>{r.lost}</td>
+                  <td>{r.goalDiff > 0 ? `+${r.goalDiff}` : r.goalDiff}</td>
+                  <td><strong>{r.points}</strong></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
     </div>
   );
