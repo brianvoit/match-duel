@@ -202,6 +202,6 @@ export type SquadData = {
 };
 
 export type ContentTab = 'details' | 'squad' | 'recap';
-export type DrawerTab = 'chat' | 'calendar' | 'tv';
+export type DrawerTab = 'chat' | 'calendar';
 export type MobileView = 'home' | 'feed' | 'content' | 'chat' | 'profile';
 export type NoticeTone = 'ok' | 'error' | 'info';

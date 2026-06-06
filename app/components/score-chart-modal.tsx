@@ -8,6 +8,7 @@ import {
   RoundResultEntry,
 } from '@/app/components/playground-types';
 import { STAGE_POINTS, fmtStage, initials, computePickPoints } from '@/app/components/playground-utils';
+import { avatarColor } from '@/lib/avatar-color';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -186,10 +187,10 @@ export function ScoreChartModal({
   const pts   = buildChart(W, H, PL, PR, PT, PB, ptsData);
   const goals = buildChart(W, H, PL, PR, PT, PB, goalsData);
 
-  const avatarCell = (url: string | null | undefined, initial: string) =>
+  const avatarCell = (url: string | null | undefined, initial: string, seed?: string | null) =>
     url
       ? <img src={url} alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover', display: 'block', margin: '0 auto' }} referrerPolicy="no-referrer" />
-      : <span style={{ display: 'block', textAlign: 'center', fontWeight: 700, fontSize: '0.75rem' }}>{initial}</span>;
+      : <span style={{ display: 'block', textAlign: 'center', fontWeight: 700, fontSize: '0.75rem', width: 20, height: 20, borderRadius: '50%', background: avatarColor(seed), color: '#fff', lineHeight: '20px', margin: '0 auto' }}>{initial}</span>;
 
   // ── Stakes table ─────────────────────────────────────────────────────────────
 
@@ -292,7 +293,7 @@ export function ScoreChartModal({
               <span className="wc-h2h-name">{myName}</span>
               {userAvatarUrl
                 ? <img className="wc-h2h-avatar" src={userAvatarUrl} alt={myName} referrerPolicy="no-referrer" />
-                : <span className="wc-h2h-avatar wc-h2h-avatar--me">{myInit}</span>}
+                : <span className="wc-h2h-avatar wc-h2h-avatar--me" style={{ background: avatarColor(userEmail) }}>{myInit}</span>}
             </div>
             <div className="wc-h2h-score">
               <span className={myPts > oppPts ? 'wc-h2h-pts--leading' : myPts < oppPts ? 'wc-h2h-pts--trailing' : ''}>{myPts}</span>
@@ -303,7 +304,7 @@ export function ScoreChartModal({
               <span className="wc-h2h-name">{oppName}</span>
               {oppAvatarUrl
                 ? <img className="wc-h2h-avatar" src={oppAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
-                : <span className="wc-h2h-avatar wc-h2h-avatar--opp">{oppInit}</span>}
+                : <span className="wc-h2h-avatar wc-h2h-avatar--opp" style={{ background: avatarColor(selectedMatchup.opponentEmail) }}>{oppInit}</span>}
             </div>
           </div>
 
@@ -341,8 +342,8 @@ export function ScoreChartModal({
           <thead>
             <tr>
               <th></th><th>G</th><th>Left</th><th>Avail</th>
-              <th>{avatarCell(userAvatarUrl, (displayName || userEmail).charAt(0).toUpperCase())}</th>
-              <th>{avatarCell(oppAvatarUrl, initials(selectedMatchup.opponentDisplayName || selectedMatchup.opponentEmail || 'O'))}</th>
+              <th>{avatarCell(userAvatarUrl, (displayName || userEmail).charAt(0).toUpperCase(), userEmail)}</th>
+              <th>{avatarCell(oppAvatarUrl, initials(selectedMatchup.opponentDisplayName || selectedMatchup.opponentEmail || 'O'), selectedMatchup.opponentEmail)}</th>
             </tr>
           </thead>
           <tbody>

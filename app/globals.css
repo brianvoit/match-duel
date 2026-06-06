@@ -851,11 +851,9 @@ select {
 }
 
 .wc-h2h-avatar--me {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
 }
 
 .wc-h2h-avatar--opp {
-  background: linear-gradient(135deg, #64748b, #94a3b8);
 }
 
 .wc-h2h-name {
@@ -986,7 +984,6 @@ select {
 }
 
 .wc-user-avatar--initials {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #fff;
   font-size: 0.82rem;
   font-weight: 700;
@@ -1229,7 +1226,6 @@ select {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #64748b, #94a3b8);
   color: #fff;
   font-size: 0.9rem;
   font-weight: 700;
@@ -1239,6 +1235,16 @@ select {
   user-select: none;
   flex-shrink: 0;
   align-self: center;
+}
+
+/* In collapsed mode: no background on the button, ring around the avatar instead */
+.wc-leftnav--collapsed .wc-nav-item[aria-current='true'] {
+  background: transparent;
+  border-color: transparent;
+}
+.wc-leftnav--collapsed .wc-nav-item[aria-current='true'] .wc-nav-opp-avatar {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Nav footer: collapse toggle pinned to bottom */
@@ -2224,7 +2230,6 @@ select {
   justify-content: center;
   font-size: 0.8rem;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #fff;
 }
 
@@ -2312,7 +2317,6 @@ select {
   justify-content: center;
   font-size: 0.65rem;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #fff;
 }
 
@@ -3088,6 +3092,43 @@ select {
 .wc-pm-comp-val--home { color: var(--accent); text-align: left; }
 .wc-pm-comp-val--away { color: var(--warn); text-align: right; }
 
+/* Tug-of-war bar */
+.wc-tug-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--warn);
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+.wc-tug-bar-home {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px 0 0 4px;
+  transition: width 0.6s ease;
+}
+
+/* Form W/D/L pills */
+.wc-form-pills-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+.wc-form-pills { display: flex; gap: 3px; align-items: center; }
+.wc-form-pills--away { flex-direction: row-reverse; }
+.wc-form-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0;
+}
+
 /* Top scorers */
 .wc-pm-scorers { display: flex; flex-direction: column; gap: 3px; }
 
@@ -3384,7 +3425,7 @@ select {
 
 /* Taller bars for pre-match comparison panels */
 .wc-recap-bars--tall {
-  height: 8px;
+  height: 10px;
   gap: 4px;
 }
 
@@ -3909,7 +3950,6 @@ select {
   border-radius: 50%;
   font-size: 1.6rem;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #fff;
 }
 
@@ -4360,7 +4400,6 @@ select {
 }
 
 .wc-mobile-nav-avatar--initials {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: #fff;
   font-size: 0.7rem;
   font-weight: 700;
@@ -4467,7 +4506,6 @@ select {
     border-radius: 50%;
     flex-shrink: 0;
     overflow: hidden;
-    background: linear-gradient(135deg, #64748b, #94a3b8);
     display: flex;
     align-items: center;
     justify-content: center;

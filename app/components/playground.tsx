@@ -19,6 +19,7 @@ import {
   STAGE_POINTS, STAGE_LABELS, fmtStage, computePickPoints,
   computeMatchdays, initials, urlBase64ToUint8Array, StatusGlyph,
 } from '@/app/components/playground-utils';
+import { avatarColor } from '@/lib/avatar-color';
 
 // Types are imported from playground-types.ts
 
@@ -1815,7 +1816,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   {userAvatarUrl ? (
                     <img className="wc-h2h-avatar" src={userAvatarUrl} alt={myName} />
                   ) : (
-                    <span className="wc-h2h-avatar wc-h2h-avatar--me">{myInit}</span>
+                    <span className="wc-h2h-avatar wc-h2h-avatar--me" style={{ background: avatarColor(userEmail) }}>{myInit}</span>
                   )}
                 </div>
 
@@ -1837,7 +1838,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                     {selectedMatchup?.opponentAvatarUrl ? (
                       <img className="wc-h2h-avatar" src={selectedMatchup.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
                     ) : (
-                      <span className="wc-h2h-avatar wc-h2h-avatar--opp">{oppInit}</span>
+                      <span className="wc-h2h-avatar wc-h2h-avatar--opp" style={{ background: avatarColor(selectedMatchup?.opponentEmail) }}>{oppInit}</span>
                     )}
                     {opponentOnline && <span className="wc-presence-dot" />}
                   </div>
@@ -1883,7 +1884,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <span className="wc-user-avatar wc-user-avatar--initials">
+                <span className="wc-user-avatar wc-user-avatar--initials" style={{ background: avatarColor(userEmail) }}>
                   {(displayName || userEmail).charAt(0).toUpperCase()}
                 </span>
               )}
@@ -1986,7 +1987,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                         vs {oppName ?? <em style={{ color: 'var(--text-1)' }}>Pending</em>}
                       </span>
                     ) : (
-                      <span className="wc-nav-opp-avatar" aria-hidden="true">
+                      <span className="wc-nav-opp-avatar" aria-hidden="true"
+                        style={{ background: avatarColor(m.opponentEmail) }}>
                         {oppName ? oppInit : '?'}
                       </span>
                     )}
@@ -2385,23 +2387,13 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 <path d="M6 2v2M14 2v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
             </button>
-            <button
-              className={`wc-drawer-icon-btn${drawerTab === 'tv' && drawerOpen ? ' wc-drawer-icon-btn--active' : ''}`}
-              title="TV" aria-label="TV"
-              onClick={() => { if (drawerOpen && drawerTab === 'tv') setDrawerOpen(false); else { setDrawerTab('tv'); setDrawerOpen(true); } }}
-            >
-              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <rect x="2" y="4" width="16" height="11" rx="2" stroke="currentColor" strokeWidth="1.5"/>
-                <path d="M7 18h6M10 15v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
           </div>
 
           {/* Sliding content panel */}
           <div className="wc-drawer-panel">
             <div className="wc-drawer-panel-header">
               <span className="wc-drawer-panel-title">
-                {{ chat: 'Chat', calendar: 'Calendar', tv: 'TV Schedule' }[drawerTab]}
+                {{ chat: 'Chat', calendar: 'Calendar' }[drawerTab as 'chat' | 'calendar']}
               </span>
               <button
                 className="wc-topbar-icon-btn"
@@ -2484,14 +2476,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   })()}
                 </div>
               )}
-              {drawerTab === 'tv' && (
-                <div className="wc-content-empty">
-                  <p style={{ fontSize: '1.5rem' }}>📺</p>
-                  <p className="wc-subtitle" style={{ fontSize: '0.84rem' }}>
-                    Broadcast &amp; streaming info — coming soon
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         </aside>
@@ -2539,7 +2523,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         >
           {userAvatarUrl
             ? <img src={userAvatarUrl} alt="Profile" className="wc-mobile-nav-avatar" referrerPolicy="no-referrer" />
-            : <span className="wc-mobile-nav-avatar wc-mobile-nav-avatar--initials">
+            : <span className="wc-mobile-nav-avatar wc-mobile-nav-avatar--initials" style={{ background: avatarColor(userEmail) }}>
                 {(displayName || userEmail).charAt(0).toUpperCase()}
               </span>
           }
@@ -2573,7 +2557,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   <div className="wc-matchup-lobby-avatar">
                     {m.opponentAvatarUrl
                       ? <img src={m.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
-                      : <span>{oppInit}</span>}
+                      : <span style={{ background: avatarColor(m.opponentEmail) }}>{oppInit}</span>}
                   </div>
                   <div className="wc-matchup-lobby-info">
                     <span className="wc-matchup-lobby-name">vs {oppName}</span>

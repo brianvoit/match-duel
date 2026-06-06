@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { avatarColor } from '@/lib/avatar-color';
 
 const PRESET_REACTIONS = ['👍', '❤️', '😂', '😮', '💀', '💯', '👌'];
 
@@ -174,7 +175,7 @@ export function ChatPanel({
         <div className="wc-chat-opp-wrap">
           {opponentAvatarUrl
             ? <img src={opponentAvatarUrl} className="wc-chat-opp-avatar" referrerPolicy="no-referrer" alt={oppName} />
-            : <span className="wc-chat-opp-avatar wc-chat-opp-avatar--init">{initials(oppName)}</span>
+            : <span className="wc-chat-opp-avatar wc-chat-opp-avatar--init" style={{ background: avatarColor(opponentEmail) }}>{initials(oppName)}</span>
           }
           {opponentOnline && <span className="wc-presence-dot" />}
         </div>
@@ -202,7 +203,7 @@ export function ChatPanel({
                     {isGroupEnd
                       ? opponentAvatarUrl
                         ? <img src={opponentAvatarUrl} className="wc-msg-avatar-sm" referrerPolicy="no-referrer" alt="" />
-                        : <span className="wc-msg-avatar-sm wc-msg-avatar-sm--init">{initials(oppName)}</span>
+                        : <span className="wc-msg-avatar-sm wc-msg-avatar-sm--init" style={{ background: avatarColor(opponentEmail) }}>{initials(oppName)}</span>
                       : <div className="wc-msg-avatar-spacer" />
                     }
                   </div>

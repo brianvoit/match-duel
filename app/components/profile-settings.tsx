@@ -1,5 +1,7 @@
 'use client';
 
+import { avatarColor } from '@/lib/avatar-color';
+
 export interface NotificationPreferences {
   pick_reminder:  boolean;
   match_finished: string[];
@@ -68,7 +70,7 @@ export function ProfileSettings({
         <div className="wc-profile-avatar-wrap">
           {userAvatarUrl
             ? <img src={userAvatarUrl} alt="Profile" className="wc-profile-avatar-img" referrerPolicy="no-referrer" />
-            : <span className="wc-profile-avatar-init">{shownName.charAt(0).toUpperCase()}</span>
+            : <span className="wc-profile-avatar-init" style={{ background: avatarColor(userEmail) }}>{shownName.charAt(0).toUpperCase()}</span>
           }
         </div>
         <div className="wc-profile-identity">

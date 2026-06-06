@@ -17,6 +17,54 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <h3 className="wc-fd-section-label" style={{ marginBottom: 8 }}>{children}</h3>;
 }
 
+function tugPct(home: number, away: number) {
+  const total = home + away;
+  return total ? (home / total) * 100 : 50;
+}
+
+function FormPill({ result, opacity }: { result: string; opacity: number }) {
+  const bg = result === 'W' ? 'var(--ok)' : result === 'D' ? 'var(--text-2)' : 'var(--danger)';
+  return (
+    <span className="wc-form-pill" style={{ background: bg, opacity }}>
+      {result}
+    </span>
+  );
+}
+
+/** Form row — W/D/L pills only, no bar.
+ *  Home: oldest → newest (newest rightmost, closest to center label)
+ *  Away: newest → oldest (newest leftmost, closest to center label)
+ *  Opacity fades from 40% (oldest) → 100% (newest) so recency is obvious.
+ */
+function FormRow({ homeForm, awayForm }: { homeForm: string; awayForm: string }) {
+  const home = homeForm.split('').slice(-5);
+  const away = awayForm.split('').slice(-5).reverse(); // newest first
+  const steps = 5;
+  const opacity = (i: number, newest: boolean) => {
+    // newest=true: index 0 is newest (full), index 4 is oldest (dim)
+    // newest=false: index 4 is newest (full), index 0 is oldest (dim)
+    const rank = newest ? i : steps - 1 - i;
+    return 0.35 + (rank / (steps - 1)) * 0.65;
+  };
+  return (
+    <div className="wc-pm-comp-row">
+      <div className="wc-pm-comp-header">
+        <span style={{ flex: 1 }} />
+        <span className="wc-pm-comp-label">Form</span>
+        <span style={{ flex: 1 }} />
+      </div>
+      <div className="wc-form-pills-row">
+        <div className="wc-form-pills">
+          {home.map((ch, i) => <FormPill key={i} result={ch} opacity={opacity(i, false)} />)}
+        </div>
+        <div className="wc-form-pills wc-form-pills--away">
+          {away.map((ch, i) => <FormPill key={i} result={ch} opacity={opacity(i, true)} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CompBar({ label, home, away }: { label: string; home: number; away: number }) {
   return (
     <div className="wc-pm-comp-row">
@@ -150,8 +198,9 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
       {comparison && (
         <div className="wc-fd-section">
           <SectionLabel>Style Comparison</SectionLabel>
-          {/* Team labels removed — left = home (blue), right = away (amber) */}
-          <CompBar label="Form"    home={comparison.form.home} away={comparison.form.away} />
+          {(predictions?.homeForm || predictions?.awayForm) && (
+            <FormRow homeForm={predictions?.homeForm ?? ''} awayForm={predictions?.awayForm ?? ''} />
+          )}
           <CompBar label="Attack"  home={comparison.att.home}  away={comparison.att.away} />
           <CompBar label="Defence" home={comparison.def.home}  away={comparison.def.away} />
         </div>
