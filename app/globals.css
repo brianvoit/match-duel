@@ -3730,6 +3730,14 @@ select {
   gap: 6px;
 }
 
+/* Shared card shell — matches the scorebug look (rounded, glassy border) */
+.wc-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--glass);
+  overflow: hidden;
+}
+
 .wc-form-list {
   display: flex;
   flex-direction: column;
@@ -3761,9 +3769,6 @@ select {
   display: flex;
   flex-direction: column;
   gap: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
 }
 
 .wc-h2h-row {

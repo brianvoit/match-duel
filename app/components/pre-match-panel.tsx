@@ -123,8 +123,16 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
       {/* ── Style Comparison — always rendered (0% bars until data arrives) */}
       <div className="wc-fd-section">
         <SectionLabel>Style Comparison</SectionLabel>
-        <CompBar label="Attack"  home={comparison?.att.home ?? 0}  away={comparison?.att.away ?? 0} />
-        <CompBar label="Defense" home={comparison?.def.home ?? 0}  away={comparison?.def.away ?? 0} />
+        <CompBar
+          label={comparison?.att.home || comparison?.att.away ? 'Attack' : 'Attack — No Data'}
+          home={comparison?.att.home ?? 0}
+          away={comparison?.att.away ?? 0}
+        />
+        <CompBar
+          label={comparison?.def.home || comparison?.def.away ? 'Defense' : 'Defense — No Data'}
+          home={comparison?.def.home ?? 0}
+          away={comparison?.def.away ?? 0}
+        />
       </div>
 
       {/* ── Goalscorers (fixture teams only) ──────────────────────────── */}
@@ -160,27 +168,29 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
       {standings && (
         <div className="wc-fd-section">
           <SectionLabel>{standings.group} Standings</SectionLabel>
-          <table className="wc-pm-table">
-            <thead>
-              <tr>
-                <th>Team</th>
-                <th>P</th><th>W</th><th>D</th><th>L</th>
-                <th>GD</th><th>Pts</th>
-              </tr>
-            </thead>
-            <tbody>
-              {standings.rows.map(r => (
-                <tr key={r.teamName} className={r.isHome || r.isAway ? 'wc-pm-table-highlight' : ''}>
-                  <td className="wc-pm-table-team">
-                    {r.isHome || r.isAway ? <strong>{r.teamName}</strong> : r.teamName}
-                  </td>
-                  <td>{r.played}</td><td>{r.won}</td><td>{r.drawn}</td><td>{r.lost}</td>
-                  <td>{r.goalDiff > 0 ? `+${r.goalDiff}` : r.goalDiff}</td>
-                  <td><strong>{r.points}</strong></td>
+          <div className="wc-card">
+            <table className="wc-pm-table">
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  <th>P</th><th>W</th><th>D</th><th>L</th>
+                  <th>GD</th><th>Pts</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {standings.rows.map(r => (
+                  <tr key={r.teamName} className={r.isHome || r.isAway ? 'wc-pm-table-highlight' : ''}>
+                    <td className="wc-pm-table-team">
+                      {r.isHome || r.isAway ? <strong>{r.teamName}</strong> : r.teamName}
+                    </td>
+                    <td>{r.played}</td><td>{r.won}</td><td>{r.drawn}</td><td>{r.lost}</td>
+                    <td>{r.goalDiff > 0 ? `+${r.goalDiff}` : r.goalDiff}</td>
+                    <td><strong>{r.points}</strong></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

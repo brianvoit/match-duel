@@ -1221,7 +1221,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         {headToHead.length > 0 && (
           <div className="wc-fd-section">
             <h3 className="wc-fd-section-label">Previous Meetings</h3>
-            <div className="wc-h2h-history">
+            <div className="wc-card wc-h2h-history">
               {headToHead.map((m, i) => {
                 const isH2hHomeFixtureHome = m.home === h2hHome;
                 const fixtureHomeGoals = isH2hHomeFixtureHome ? m.homeGoals : m.awayGoals;
