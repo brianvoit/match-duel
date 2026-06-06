@@ -76,22 +76,54 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     apiFetch(key, `/players/topscorers?league=1&season=${season}`),
   ]);
 
+  // Phase 2: fetch last-5 team fixtures using IDs from predictions (needed for national team form)
+  const pred = Array.isArray(predRaw) ? predRaw[0] : predRaw;
+  const homeTeamId: number | null = pred?.teams?.home?.id ?? null;
+  const awayTeamId: number | null = pred?.teams?.away?.id ?? null;
+  const [homeFixRaw, awayFixRaw] = await Promise.all([
+    homeTeamId ? apiFetch(key, `/fixtures?team=${homeTeamId}&last=5`) : Promise.resolve(null),
+    awayTeamId ? apiFetch(key, `/fixtures?team=${awayTeamId}&last=5`) : Promise.resolve(null),
+  ]);
+
+  /** Build a W/D/L string (oldest → newest) from recent team fixtures */
+  function buildForm(fixtures: unknown, teamId: number): string {
+    if (!Array.isArray(fixtures)) return '';
+    return fixtures
+      .slice()
+      .sort((a, b) =>
+        new Date((a as { fixture: { date: string } }).fixture.date).getTime() -
+        new Date((b as { fixture: { date: string } }).fixture.date).getTime()
+      )
+      .map((m: {
+        teams: { home: { id: number; winner: boolean | null }; away: { id: number } };
+      }) => {
+        const isHome = m.teams.home.id === teamId;
+        const homeWon = m.teams.home.winner;
+        if (homeWon === null) return 'D';
+        if (isHome) return homeWon ? 'W' : 'L';
+        return homeWon ? 'L' : 'W';
+      })
+      .join('');
+  }
+
   // ── Predictions ────────────────────────────────────────────────────────────
   let predictions: PreMatchPredictions | null = null;
   let homeGoals: TeamGoals | null = null;
   let awayGoals: TeamGoals | null = null;
   let comparison: StyleComparison | null = null;
 
-  const pred = Array.isArray(predRaw) ? predRaw[0] : predRaw;
   if (pred?.predictions) {
     const p = pred.predictions;
+    // Prefer cross-competition recent form; fall back to league form if API provides it
+    const homeForm = homeTeamId ? buildForm(homeFixRaw, homeTeamId) : (pred.teams?.home?.league?.form ?? '');
+    const awayForm = awayTeamId ? buildForm(awayFixRaw, awayTeamId) : (pred.teams?.away?.league?.form ?? '');
     predictions = {
       homePercent: pct(p.percent?.home),
       drawPercent: pct(p.percent?.draw),
       awayPercent: pct(p.percent?.away),
       advice: p.advice ?? '',
-      homeForm: pred.teams?.home?.league?.form ?? '',
-      awayForm: pred.teams?.away?.league?.form ?? '',
+      homeForm,
+      awayForm,
     };
     const hg = pred.teams?.home?.last_5?.goals;
     const ag = pred.teams?.away?.last_5?.goals;
