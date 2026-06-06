@@ -3669,6 +3669,17 @@ select {
   text-transform: uppercase;
   color: var(--text-2);
 }
+.wc-fd-scorebug-form {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+}
+.wc-form-pill--sm {
+  width: 17px;
+  height: 17px;
+  font-size: 0.5rem;
+}
 
 .wc-fd-scorebug-center {
   display: flex;

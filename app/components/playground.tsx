@@ -23,6 +23,27 @@ import { avatarColor } from '@/lib/avatar-color';
 
 // Types are imported from playground-types.ts
 
+/** Compact W/D/L pills shown inside the scorebug, under each team name.
+ *  Oldest → newest left-to-right; dim → full opacity.
+ *  Pads with 'X' (hollow circle) if fewer than 5 results.
+ */
+function ScoreBugForm({ form }: { form: string }) {
+  const chars = form.split('').filter(c => 'WDL'.includes(c)).slice(-5);
+  while (chars.length < 5) chars.unshift('X');
+  return (
+    <div className="wc-fd-scorebug-form">
+      {chars.map((ch, i) => {
+        const opacity = 0.35 + (i / 4) * 0.65;
+        if (ch === 'X') {
+          return <span key={i} className="wc-form-pill wc-form-pill--sm wc-form-pill--empty" style={{ opacity }}>X</span>;
+        }
+        const bg = ch === 'W' ? 'var(--ok)' : ch === 'D' ? 'var(--text-2)' : 'var(--danger)';
+        return <span key={i} className="wc-form-pill wc-form-pill--sm" style={{ background: bg, opacity }}>{ch}</span>;
+      })}
+    </div>
+  );
+}
+
 interface PlaygroundProps {
   userEmail: string;
   userAvatarUrl?: string | null;
@@ -914,6 +935,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 )}
               </div>
               <h2 className="wc-fd-scorebug-name">{f.homeTeam}</h2>
+              <ScoreBugForm form={preMatchData?.predictions?.homeForm ?? ''} />
             </div>
 
             {/* Score center */}
@@ -961,6 +983,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 )}
               </div>
               <h2 className="wc-fd-scorebug-name">{f.awayTeam}</h2>
+              <ScoreBugForm form={preMatchData?.predictions?.awayForm ?? ''} />
             </div>
           </div>
         </div>

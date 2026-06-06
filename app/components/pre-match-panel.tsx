@@ -18,62 +18,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 
-function FormPill({ result, opacity }: { result: string; opacity: number }) {
-  if (result === 'X') {
-    return (
-      <span className="wc-form-pill wc-form-pill--empty" style={{ opacity }}>
-        X
-      </span>
-    );
-  }
-  const bg = result === 'W' ? 'var(--ok)' : result === 'D' ? 'var(--text-2)' : 'var(--danger)';
-  return (
-    <span className="wc-form-pill" style={{ background: bg, opacity }}>
-      {result}
-    </span>
-  );
-}
 
-/** Pad a form string to exactly 5 entries, prepending 'X' for unknown oldest results.
- *  Returns oldest-first array, e.g. "WW" → ['X','X','X','W','W']
- */
-function padForm(s: string): string[] {
-  const chars = s.split('').filter(c => 'WDL'.includes(c)).slice(-5);
-  while (chars.length < 5) chars.unshift('X');
-  return chars;
-}
-
-/** Form row — W/D/L pills always shown (X = no data yet).
- *  Home: oldest → newest left-to-right (newest rightmost, closest to center)
- *  Away: newest → oldest left-to-right (newest leftmost, closest to center)
- *  Opacity fades from 35% (oldest) → 100% (newest).
- */
-function FormRow({ homeForm, awayForm }: { homeForm: string; awayForm: string }) {
-  const home = padForm(homeForm);                  // oldest first
-  const away = [...padForm(awayForm)].reverse();   // newest first
-  const steps = 5;
-  // home: i=0 oldest (dim) → i=4 newest (full)
-  const homeOpacity = (i: number) => 0.35 + (i / (steps - 1)) * 0.65;
-  // away: i=0 newest (full) → i=4 oldest (dim)
-  const awayOpacity = (i: number) => 0.35 + ((steps - 1 - i) / (steps - 1)) * 0.65;
-  return (
-    <div className="wc-pm-comp-row">
-      <div className="wc-pm-comp-header">
-        <span style={{ flex: 1 }} />
-        <span className="wc-pm-comp-label">Form</span>
-        <span style={{ flex: 1 }} />
-      </div>
-      <div className="wc-form-pills-row">
-        <div className="wc-form-pills">
-          {home.map((ch, i) => <FormPill key={i} result={ch} opacity={homeOpacity(i)} />)}
-        </div>
-        <div className="wc-form-pills wc-form-pills--away">
-          {away.map((ch, i) => <FormPill key={i} result={ch} opacity={awayOpacity(i)} />)}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function CompBar({ label, home, away }: { label: string; home: number; away: number }) {
   return (
@@ -175,12 +120,8 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
         </div>
       )}
 
-      {/* ── Form + Style Comparison — always rendered (X pills / 0% bars until data arrives) */}
+      {/* ── Style Comparison — always rendered (0% bars until data arrives) */}
       <div className="wc-fd-section">
-        <FormRow
-          homeForm={predictions?.homeForm ?? ''}
-          awayForm={predictions?.awayForm ?? ''}
-        />
         <SectionLabel>Style Comparison</SectionLabel>
         <CompBar label="Attack"  home={comparison?.att.home ?? 0}  away={comparison?.att.away ?? 0} />
         <CompBar label="Defence" home={comparison?.def.home ?? 0}  away={comparison?.def.away ?? 0} />
