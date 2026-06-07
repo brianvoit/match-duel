@@ -2716,15 +2716,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           onClick={(e) => { if (e.target === e.currentTarget) setPickSummaryOpen(false); }}
         >
           <div className="wc-modal">
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                className="wc-topbar-icon-btn"
-                aria-label="Close"
-                onClick={() => setPickSummaryOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
             <PickSummaryContent
               stats={pickSummaryStats}
               onShowUnpicked={() => { setPickSummaryOpen(false); setFilterPickable(true); }}
