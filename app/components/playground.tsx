@@ -1787,9 +1787,9 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         {/* Hamburger — mobile only, shown when 2+ matchups */}
         {matchups.length > 1 && (
           <button
-            className="wc-hamburger"
-            aria-label="Switch matchup"
-            onClick={() => setMatchupDrawerOpen(true)}
+            className={`wc-hamburger${matchupDrawerOpen ? ' wc-hamburger--open' : ''}`}
+            aria-label={matchupDrawerOpen ? 'Close matchup menu' : 'Switch matchup'}
+            onClick={() => setMatchupDrawerOpen(v => !v)}
           >
             <span /><span /><span />
           </button>
@@ -2583,13 +2583,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           <div className="wc-matchup-drawer">
             <div className="wc-matchup-drawer-header">
               <span className="wc-matchup-drawer-title">Your Matchups</span>
-              <button
-                className="wc-topbar-icon-btn"
-                aria-label="Close"
-                onClick={() => setMatchupDrawerOpen(false)}
-              >
-                ✕
-              </button>
             </div>
             <div className="wc-matchup-drawer-list">
               {matchups.map((m) => {
@@ -2608,12 +2601,11 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   >
                     <div className="wc-matchup-lobby-avatar">
                       {m.opponentAvatarUrl
-                        ? <img src={m.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
-                        : <span style={{ background: avatarColor(m.opponentEmail) }}>{oppInit}</span>}
+                        ? <img src={m.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        : <span style={{ background: avatarColor(m.opponentEmail), width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.85rem' }}>{oppInit}</span>}
                     </div>
                     <div className="wc-matchup-lobby-info">
                       <span className="wc-matchup-lobby-name">vs {oppName}</span>
-                      <span className="wc-matchup-lobby-sub">FIFA World Cup &apos;26</span>
                     </div>
                     {isActive && (
                       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">

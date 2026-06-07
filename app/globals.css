@@ -4674,7 +4674,20 @@ select {
     width: 100%;
     background: var(--text-0);
     border-radius: 2px;
-    transition: opacity 0.15s;
+    transition: transform 0.22s ease, opacity 0.22s ease;
+    transform-origin: center;
+  }
+
+  /* Animate to X when open */
+  .wc-hamburger--open span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+  }
+  .wc-hamburger--open span:nth-child(2) {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  .wc-hamburger--open span:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
   }
 
   .wc-hamburger:active span {
