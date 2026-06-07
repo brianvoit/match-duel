@@ -1892,7 +1892,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             aria-label={pickSummaryStats.total > 0 ? `${pickSummaryStats.total} picks pending` : 'Alerts'}
             title="Alerts"
             onClick={() => setPickSummaryOpen(true)}
-            disabled={!selectedMatchupId}
           >
             <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <path d="M10 2a6 6 0 00-6 6c0 3.5-1.5 5-1.5 5h15s-1.5-1.5-1.5-5a6 6 0 00-6-6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
