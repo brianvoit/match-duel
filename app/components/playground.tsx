@@ -1786,16 +1786,14 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     <div className="wc-shell">
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <header className="wc-topbar">
-        {/* Hamburger — mobile only, shown when 2+ matchups */}
-        {matchups.length > 1 && (
-          <button
-            className={`wc-hamburger${matchupDrawerOpen ? ' wc-hamburger--open' : ''}`}
-            aria-label={matchupDrawerOpen ? 'Close matchup menu' : 'Switch matchup'}
-            onClick={() => setMatchupDrawerOpen(v => !v)}
-          >
-            <span /><span /><span />
-          </button>
-        )}
+        {/* Hamburger — mobile only, always visible */}
+        <button
+          className={`wc-hamburger${matchupDrawerOpen ? ' wc-hamburger--open' : ''}`}
+          aria-label={matchupDrawerOpen ? 'Close menu' : 'Open menu'}
+          onClick={() => setMatchupDrawerOpen(v => !v)}
+        >
+          <span /><span /><span />
+        </button>
 
         {/* Tournament name — clickable, opens dropdown */}
         <div className="wc-tournament-menu" ref={tournamentMenuRef}>
@@ -2586,7 +2584,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
             <div className="wc-matchup-drawer-header">
               <span className="wc-matchup-drawer-title">Your Matchups</span>
             </div>
-            <div className="wc-matchup-drawer-list">
+            <div className="wc-matchup-drawer-list" style={{ flex: 1 }}>
               {matchups.map((m) => {
                 const oppName = m.opponentDisplayName ?? m.opponentEmail?.split('@')[0] ?? 'Pending';
                 const oppInit = initials(oppName);
@@ -2652,6 +2650,21 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                   </div>
                 );
               })}
+            </div>
+            {/* Create + Join actions */}
+            <div className="wc-matchup-drawer-footer">
+              <button
+                className="wc-drawer-action-btn wc-drawer-action-btn--primary"
+                onClick={() => { setMatchupDrawerOpen(false); setCreateOpen(true); }}
+              >
+                + Create
+              </button>
+              <button
+                className="wc-drawer-action-btn wc-drawer-action-btn--secondary"
+                onClick={() => { setMatchupDrawerOpen(false); setJoinOpen(true); }}
+              >
+                Join
+              </button>
             </div>
           </div>
         </>
