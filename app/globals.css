@@ -4320,7 +4320,7 @@ select {
 @media (max-width: 767px) {
   .wc-chart-modal-backdrop {
     padding: 0;
-    background: var(--bg);       /* opaque — no overlay dimming */
+    background: var(--bg-0);     /* opaque — no overlay dimming */
   }
   .wc-chart-modal-backdrop .wc-score-modal {
     width: 100%;
@@ -4831,6 +4831,132 @@ select {
   .wc-topbar-right {
     margin-left: auto;
   }
+}
+
+/* ── Notification drawer (right side, all screen sizes) ─────────────────────── */
+.wc-notif-drawer-backdrop {
+  display: block;
+  position: fixed;
+  top: var(--topbar-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 29;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.wc-notif-drawer {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  width: min(80vw, 300px);
+  z-index: 30;
+  background: var(--bg-0);
+  box-shadow: -4px 0 32px rgba(0, 0, 0, 0.18);
+  animation: slideInRight 0.22s ease;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+/* Notification rows */
+.wc-notif-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--bg-0);
+  border: none;
+  border-bottom: 1px solid var(--separator);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+.wc-notif-row:active {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-0));
+}
+
+.wc-notif-row-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 2px;
+}
+
+.wc-notif-row-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-1);
+  line-height: 1.2;
+}
+
+.wc-notif-row-label--urgent {
+  color: var(--danger);
+}
+
+.wc-notif-row-label--ok {
+  color: var(--ok, #22c55e);
+}
+
+.wc-notif-row-label--muted {
+  color: var(--text-2);
+}
+
+.wc-notif-row-sub {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+
+.wc-notif-urgent-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+
+/* ── Scorebug hint tooltip ───────────────────────────────────────────────────── */
+
+.wc-scorebug-hint {
+  position: fixed;
+  top: calc(var(--topbar-h) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text-1);
+  color: var(--bg-0);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 20px;
+  white-space: nowrap;
+  z-index: 60;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: hintFadeIn 0.35s ease both;
+}
+
+/* Upward-pointing arrow */
+.wc-scorebug-hint::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--text-1);
+  border-top-width: 0;
+}
+
+@keyframes hintFadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 /* ── Reduced motion ──────────────────────────────────────────────────────────── */

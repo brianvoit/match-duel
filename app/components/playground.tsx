@@ -7,7 +7,6 @@ import { ChatPanel } from '@/app/components/chat-panel';
 import { PreMatchPanel } from '@/app/components/pre-match-panel';
 import { ScoreChartModal } from '@/app/components/score-chart-modal';
 import { ProfileSettings } from '@/app/components/profile-settings';
-import { PickSummaryContent } from '@/app/components/pick-summary-content';
 import {
   Tournament, Matchup, Round, Fixture,
   ParticipantStanding, RoundResultParticipant, RoundResultEntry,
@@ -70,20 +69,30 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   // ── Layout state ───────────────────────────────────────────────────────────
   const [leftNavOpen, setLeftNavOpen] = useState(true);
   const [matchupDrawerOpen, setMatchupDrawerOpen] = useState(false);
+  const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
+  const [notifSummary, setNotifSummary] = useState<Array<{
+    matchupId: string;
+    opponentName: string | null;
+    opponentAvatarUrl: string | null;
+    isPending: boolean;
+    total: number;
+    urgent: number;
+  }>>([]);
+  const [notifSummaryLoading, setNotifSummaryLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
   const [contentTab, setContentTab] = useState<ContentTab>('details');
   const [mobileView, setMobileView] = useState<MobileView>('feed');
   const [scoreChartOpen, setScoreChartOpen] = useState(false);
+  const [scorebugHintVisible, setScorebugHintVisible] = useState(false);
+  const scorebugHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Menu state ─────────────────────────────────────────────────────────────
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [tournamentMenuOpen, setTournamentMenuOpen] = useState(false);
   const tournamentMenuRef = useRef<HTMLDivElement>(null);
-  const hasAutoShownPickSummary = useRef(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [pickSummaryOpen, setPickSummaryOpen] = useState(false);
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
@@ -234,26 +243,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     return null;
   }, [fixtures, completedRoundFixtures, selectedFixtureId]);
 
-  const pickSummaryStats = useMemo(() => {
-    const hasPickOrder = Object.keys(pickOrder).length > 0;
-    const unpicked = fixtures.filter((f) => {
-      if (f.isLocked) return false;
-      if (pickMap[f.id] ?? f.myPickSide) return false;
-      return !hasPickOrder || pickOrder[f.id] === myParticipantId;
-    });
-    const now = Date.now();
-    const in24h = now + 24 * 60 * 60 * 1000;
-    const in3d = now + 3 * 24 * 60 * 60 * 1000;
-    let urgent = 0, soon = 0, later = 0;
-    for (const f of unpicked) {
-      const t = new Date(f.startsAt).getTime();
-      if (t <= in24h) urgent++;
-      else if (t <= in3d) soon++;
-      else later++;
-    }
-    return { total: unpicked.length, urgent, soon, later };
-  }, [fixtures, pickMap, pickOrder, myParticipantId]);
-
   // First unpicked fixture that is my turn to pick (used for mobile auto-scroll)
   const nextPickFixtureId = useMemo(() => {
     const hasPickOrder = Object.keys(pickOrder).length > 0;
@@ -264,6 +253,14 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     });
     return candidate?.id ?? null;
   }, [visibleFixtures, pickMap, pickOrder, myParticipantId]);
+
+  // ── Scorebug hint ──────────────────────────────────────────────────────────
+
+  function dismissScorebugHint() {
+    if (scorebugHintTimer.current) clearTimeout(scorebugHintTimer.current);
+    setScorebugHintVisible(false);
+    try { localStorage.setItem('scorebug-hint-seen', '1'); } catch { /* storage blocked */ }
+  }
 
   // ── Notice ─────────────────────────────────────────────────────────────────
 
@@ -279,6 +276,23 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.reload();
+  }, []);
+
+  // ── Notification summary ───────────────────────────────────────────────────
+
+  const fetchNotifSummary = useCallback(async () => {
+    setNotifSummaryLoading(true);
+    try {
+      const res = await fetch('/api/notifications/summary');
+      if (res.ok) {
+        const data = await res.json();
+        setNotifSummary(data.matchups ?? []);
+      }
+    } catch {
+      // non-fatal
+    } finally {
+      setNotifSummaryLoading(false);
+    }
   }, []);
 
   // ── Effects ────────────────────────────────────────────────────────────────
@@ -349,20 +363,19 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMatchupId]);
 
-  // Reset auto-show flag when active matchup changes so new matchup shows summary fresh
+  // Show scorebug hint once, after the first matchup with an opponent loads
   useEffect(() => {
-    hasAutoShownPickSummary.current = false;
-  }, [selectedMatchupId]);
-
-  // Auto-show pick summary once per matchup load when there are upcoming unpicked games
-  useEffect(() => {
-    if (loading) return;
-    if (!selectedMatchupId) return;
-    if (hasAutoShownPickSummary.current) return;
-    if (pickSummaryStats.total === 0) return;
-    hasAutoShownPickSummary.current = true;
-    setPickSummaryOpen(true);
-  }, [loading, selectedMatchupId, pickSummaryStats.total]);
+    if (!selectedMatchup?.opponentDisplayName && !selectedMatchup?.opponentEmail) return;
+    try { if (localStorage.getItem('scorebug-hint-seen')) return; } catch { return; }
+    // Short delay so the page settles before the hint appears
+    scorebugHintTimer.current = setTimeout(() => {
+      setScorebugHintVisible(true);
+      // Auto-dismiss after 5 s
+      scorebugHintTimer.current = setTimeout(dismissScorebugHint, 5000);
+    }, 1200);
+    return () => { if (scorebugHintTimer.current) clearTimeout(scorebugHintTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMatchup?.matchupId]);
 
   // 30s live polling
   useEffect(() => {
@@ -571,6 +584,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       setSelectedMatchupId(rows[0].matchupId);
     }
     setLoading(false);
+    // Silently prefetch notification counts so bell badge is ready
+    fetchNotifSummary();
   }
 
   async function loadStandings(matchupId: string) {
@@ -753,6 +768,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     showNotice('ok', `${picks.length} picks saved!`);
     await loadCurrentRoundAndFixtures();
     setLoading(false);
+    fetchNotifSummary();
   }
 
   async function submitSinglePick(fixtureId: string) {
@@ -780,6 +796,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     showNotice('ok', 'Pick saved!');
     await loadCurrentRoundAndFixtures();
     setLoading(false);
+    fetchNotifSummary();
   }
 
   async function saveDisplayName() {
@@ -1790,7 +1807,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         <button
           className={`wc-hamburger${matchupDrawerOpen ? ' wc-hamburger--open' : ''}`}
           aria-label={matchupDrawerOpen ? 'Close menu' : 'Open menu'}
-          onClick={() => setMatchupDrawerOpen(v => !v)}
+          onClick={() => { setMatchupDrawerOpen(v => !v); setNotifDrawerOpen(false); }}
         >
           <span /><span /><span />
         </button>
@@ -1852,7 +1869,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               <button
                 className="wc-h2h"
                 title="View score breakdown"
-                onClick={() => setScoreChartOpen(true)}
+                onClick={() => { setScoreChartOpen(true); dismissScorebugHint(); }}
               >
                 {/* Home — current user: name LEFT, avatar RIGHT */}
                 <div className="wc-h2h-player">
@@ -1895,20 +1912,30 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         {/* Global actions + user */}
         <div className="wc-topbar-right">
           {/* Alerts bell */}
-          <button
-            className={`wc-alerts-btn${pickSummaryStats.urgent > 0 ? ' wc-alerts-btn--urgent' : pickSummaryStats.total > 0 ? ' wc-alerts-btn--active' : ''}`}
-            aria-label={pickSummaryStats.total > 0 ? `${pickSummaryStats.total} picks pending` : 'Alerts'}
-            title="Alerts"
-            onClick={() => setPickSummaryOpen(true)}
-          >
-            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path d="M10 2a6 6 0 00-6 6c0 3.5-1.5 5-1.5 5h15s-1.5-1.5-1.5-5a6 6 0 00-6-6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
-              <path d="M8.5 17a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-            {pickSummaryStats.total > 0 && selectedMatchupId && (
-              <span className={`wc-alerts-badge${pickSummaryStats.urgent > 0 ? ' wc-alerts-badge--urgent' : ''}`} />
-            )}
-          </button>
+          {(() => {
+            const totalPending = notifSummary.filter(m => !m.isPending).reduce((s, m) => s + m.total, 0);
+            const anyUrgent = notifSummary.some((m) => !m.isPending && m.urgent > 0);
+            return (
+              <button
+                className={`wc-alerts-btn${anyUrgent ? ' wc-alerts-btn--urgent' : totalPending > 0 ? ' wc-alerts-btn--active' : ''}`}
+                aria-label={totalPending > 0 ? `${totalPending} picks pending` : 'Alerts'}
+                title="Alerts"
+                onClick={() => {
+                  setNotifDrawerOpen(v => !v);
+                  setMatchupDrawerOpen(false);
+                  if (!notifDrawerOpen) fetchNotifSummary();
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M10 2a6 6 0 00-6 6c0 3.5-1.5 5-1.5 5h15s-1.5-1.5-1.5-5a6 6 0 00-6-6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
+                  <path d="M8.5 17a1.5 1.5 0 003 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+                {totalPending > 0 && (
+                  <span className={`wc-alerts-badge${anyUrgent ? ' wc-alerts-badge--urgent' : ''}`} />
+                )}
+              </button>
+            );
+          })()}
 
           {/* User avatar + dropdown */}
           <div className="wc-user-menu" ref={userMenuRef}>
@@ -1994,6 +2021,13 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           </div>
         </div>
       </header>
+
+      {/* ── Scorebug hint tooltip ────────────────────────────────────────────── */}
+      {scorebugHintVisible && (
+        <div className="wc-scorebug-hint" role="tooltip" onClick={dismissScorebugHint}>
+          Tap to see standings &amp; stats
+        </div>
+      )}
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
       <div className={`wc-body wc-body--${mobileView}`}>
@@ -2670,6 +2704,89 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         </>
       )}
 
+      {/* ── Notification drawer (right side) ──────────────────────────────────── */}
+      {notifDrawerOpen && (
+        <>
+          <div
+            className="wc-notif-drawer-backdrop"
+            onClick={() => setNotifDrawerOpen(false)}
+          />
+          <div className="wc-notif-drawer">
+            <div className="wc-matchup-drawer-header">
+              <span className="wc-matchup-drawer-title">Your Picks</span>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {notifSummaryLoading && (
+                <div style={{ padding: '24px 20px', color: 'var(--text-2)', fontSize: '0.9rem' }}>
+                  Loading…
+                </div>
+              )}
+              {!notifSummaryLoading && notifSummary.length === 0 && (
+                <div style={{ padding: '24px 20px', color: 'var(--text-2)', fontSize: '0.9rem' }}>
+                  You're all caught up!
+                </div>
+              )}
+              {!notifSummaryLoading && notifSummary.map((item) => {
+                const matchup = matchups.find(m => m.matchupId === item.matchupId);
+                const oppEmail = matchup?.opponentEmail ?? '';
+                const oppName = item.opponentName ?? 'Pending';
+                const oppInit = oppName.slice(0, 2).toUpperCase();
+                return (
+                  <button
+                    key={item.matchupId}
+                    className="wc-notif-row"
+                    onClick={() => {
+                      setSelectedMatchupId(item.matchupId);
+                      setNotifDrawerOpen(false);
+                      if (!item.isPending) setFilterPickable(true);
+                      setMobileView('feed');
+                    }}
+                  >
+                    <div className="wc-matchup-lobby-avatar">
+                      {item.isPending ? (
+                        /* hourglass icon for pending invites */
+                        <span style={{ background: 'var(--text-2)', width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            <path d="M4 2h8M4 14h8M5 2v3.5c0 .8.4 1.6 1 2l2 1.5-2 1.5c-.6.4-1 1.2-1 2V14M11 2v3.5c0 .8-.4 1.6-1 2L8 9l2 1.5c.6.4 1 1.2 1 2V14" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </span>
+                      ) : item.opponentAvatarUrl ? (
+                        <img src={item.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        <span style={{ background: avatarColor(oppEmail), width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.85rem' }}>{oppInit}</span>
+                      )}
+                    </div>
+                    <div className="wc-notif-row-body">
+                      {item.isPending ? (
+                        <>
+                          <span className="wc-notif-row-label wc-notif-row-label--muted">Invite pending</span>
+                          <span className="wc-notif-row-sub">waiting for opponent to join</span>
+                        </>
+                      ) : item.total > 0 ? (
+                        <>
+                          <span className={`wc-notif-row-label${item.urgent > 0 ? ' wc-notif-row-label--urgent' : ''}`}>
+                            {item.total} pick{item.total !== 1 ? 's' : ''} due
+                          </span>
+                          <span className="wc-notif-row-sub">against {oppName}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="wc-notif-row-label wc-notif-row-label--ok">All caught up</span>
+                          <span className="wc-notif-row-sub">vs {oppName}</span>
+                        </>
+                      )}
+                    </div>
+                    {item.urgent > 0 && (
+                      <span className="wc-notif-urgent-dot" aria-label={`${item.urgent} urgent`} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Mobile: Chat full-screen ──────────────────────────────────────────── */}
       {mobileView === 'chat' && (
         <div className="wc-mobile-overlay">
@@ -2766,25 +2883,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           displayName={displayName}
           onClose={() => setScoreChartOpen(false)}
         />
-      )}
-
-      {/* Pick summary modal */}
-      {pickSummaryOpen && selectedMatchupId && (
-        <div
-          className="wc-modal-backdrop"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Pick summary"
-          onClick={(e) => { if (e.target === e.currentTarget) setPickSummaryOpen(false); }}
-        >
-          <div className="wc-modal">
-            <PickSummaryContent
-              stats={pickSummaryStats}
-              onShowUnpicked={() => { setPickSummaryOpen(false); setFilterPickable(true); }}
-              onDismiss={() => setPickSummaryOpen(false)}
-            />
-          </div>
-        </div>
       )}
 
       {/* Profile / settings modal */}

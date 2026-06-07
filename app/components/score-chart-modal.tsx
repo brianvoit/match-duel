@@ -234,24 +234,63 @@ export function ScoreChartModal({
   ) {
     const myLine  = c.played.map(d => `${c.toX(d.i).toFixed(1)},${c.toY(d.myCum).toFixed(1)}`).join(' ');
     const oppLine = c.played.map(d => `${c.toX(d.i).toFixed(1)},${c.toY(d.oppCum).toFixed(1)}`).join(' ');
+
+    // Label condensing: when step gets small, skip intermediate matchday labels.
+    // Stage labels (Ro32, QF …) and the first/last point always show.
+    const labelEvery = c.step < 30 ? 3 : c.step < 44 ? 2 : 1;
+    const showLabel = (d: ChartPoint, i: number, n: number) =>
+      d.isStage || i === 0 || i === n - 1 || i % labelEvery === 0;
+
+    const baseline = PT + c.cH;
+
     return (
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+
+        {/* Horizontal y-axis grid lines */}
         {c.yTicks.map(v => (
           <g key={`${prefix}y-${v}`}>
-            <line x1={PL} y1={c.toY(v)} x2={W - PR} y2={c.toY(v)} stroke="var(--line)" strokeWidth={v === 0 ? 1.5 : 0.8} />
+            <line x1={PL} y1={c.toY(v)} x2={W - PR} y2={c.toY(v)}
+              stroke="var(--line)" strokeWidth={v === 0 ? 1.5 : 0.6} />
             <text x={PL - 5} y={c.toY(v) + 4} textAnchor="end" fontSize={9} fill="var(--text-2)">{v}</text>
           </g>
         ))}
-        {c.koIdx > 0 && (
-          <line x1={c.toX(c.koIdx) - c.step / 2} y1={PT} x2={c.toX(c.koIdx) - c.step / 2} y2={PT + c.cH}
-            stroke="var(--line)" strokeWidth={1} strokeDasharray="4 3" />
-        )}
+
+        {/* Subtle vertical grid lines at every x position */}
         {data.map((d, i) => (
+          <line key={`${prefix}vgrid-${i}`}
+            x1={c.toX(i).toFixed(1)} y1={PT}
+            x2={c.toX(i).toFixed(1)} y2={baseline}
+            stroke="var(--line)" strokeWidth={0.6} opacity={0.55}
+          />
+        ))}
+
+        {/* KO / Group-stage divider (dashed, stronger) */}
+        {c.koIdx > 0 && (
+          <line x1={(c.toX(c.koIdx) - c.step / 2).toFixed(1)} y1={PT}
+            x2={(c.toX(c.koIdx) - c.step / 2).toFixed(1)} y2={baseline}
+            stroke="var(--line)" strokeWidth={1.2} strokeDasharray="4 3" />
+        )}
+
+        {/* Tick marks on x-axis baseline */}
+        {data.map((d, i) => (
+          <line key={`${prefix}tick-${i}`}
+            x1={c.toX(i).toFixed(1)} y1={baseline}
+            x2={c.toX(i).toFixed(1)} y2={(baseline + 4).toFixed(1)}
+            stroke="var(--text-2)" strokeWidth={1}
+          />
+        ))}
+
+        {/* X-axis labels — condensed when crowded */}
+        {data.map((d, i) => showLabel(d, i, data.length) && (
           <text key={`${prefix}x-${i}`} x={c.toX(i)} y={H - 6} textAnchor="middle" fontSize={8.5}
             fill={d.played ? 'var(--text-1)' : 'var(--text-2)'}>{d.label}</text>
         ))}
+
+        {/* Data lines */}
         {oppLine && <polyline points={oppLine} fill="none" stroke={oppColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" opacity={0.75} />}
         {myLine  && <polyline points={myLine}  fill="none" stroke={myColor}  strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />}
+
+        {/* Data point dots */}
         {c.played.map(d => (
           <g key={`${prefix}dot-${d.i}`}>
             <circle cx={c.toX(d.i)} cy={c.toY(d.myCum)}  r={3.5} fill={myColor} />
@@ -318,13 +357,9 @@ export function ScoreChartModal({
         <h3 className="wc-chart-heading">Score by Matchday</h3>
         <div className="wc-chart-wrap">{renderChart(ptsData, pts, 'pts-')}</div>
 
-        {/* Goals chart */}
-        {goalsData.some(d => d.played) && (
-          <>
-            <h3 className="wc-chart-heading">Goals Scored</h3>
-            <div className="wc-chart-wrap">{renderChart(goalsData, goals, 'goals-')}</div>
-          </>
-        )}
+        {/* Goals chart — always shown */}
+        <h3 className="wc-chart-heading">Goals Scored</h3>
+        <div className="wc-chart-wrap">{renderChart(goalsData, goals, 'goals-')}</div>
 
         {/* Single shared legend for both charts */}
         <div className="wc-chart-legend">
