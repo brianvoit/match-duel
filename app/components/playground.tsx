@@ -69,6 +69,7 @@ const TOURNAMENT_CATALOGUE = [
 export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   // ── Layout state ───────────────────────────────────────────────────────────
   const [leftNavOpen, setLeftNavOpen] = useState(true);
+  const [matchupDrawerOpen, setMatchupDrawerOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
   const [contentTab, setContentTab] = useState<ContentTab>('details');
@@ -566,10 +567,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     setMatchups(rows);
     if (!selectedMatchupId && rows[0]?.matchupId) {
       setSelectedMatchupId(rows[0].matchupId);
-    }
-    // On mobile: if multiple matchups, show the lobby; otherwise stay on feed
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      if (rows.length > 1) setMobileView('home');
     }
     setLoading(false);
   }
@@ -1787,6 +1784,17 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
     <div className="wc-shell">
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <header className="wc-topbar">
+        {/* Hamburger — mobile only, shown when 2+ matchups */}
+        {matchups.length > 1 && (
+          <button
+            className="wc-hamburger"
+            aria-label="Switch matchup"
+            onClick={() => setMatchupDrawerOpen(true)}
+          >
+            <span /><span /><span />
+          </button>
+        )}
+
         {/* Tournament name — clickable, opens dropdown */}
         <div className="wc-tournament-menu" ref={tournamentMenuRef}>
           <button
@@ -2519,14 +2527,11 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       {/* Mobile bottom nav */}
       <nav className="wc-mobile-nav" aria-label="Mobile navigation">
 
-        {/* Matches — lobby if 2+ matchups, else straight to feed */}
+        {/* Matches */}
         <button
           className="wc-mobile-nav-btn"
-          aria-pressed={mobileView === 'home' || mobileView === 'feed' || mobileView === 'content'}
-          onClick={() => {
-            if (matchups.length > 1) setMobileView('home');
-            else setMobileView('feed');
-          }}
+          aria-pressed={mobileView === 'feed' || mobileView === 'content'}
+          onClick={() => setMobileView('feed')}
         >
           {/* Soccer ball — outline monocolor */}
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -2566,46 +2571,61 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         </button>
       </nav>
 
-      {/* ── Mobile: Home lobby (2+ matchups) ─────────────────────────────────── */}
-      {mobileView === 'home' && (
-        <div className="wc-mobile-overlay">
-          <div className="wc-mobile-overlay-nav">
-            <span className="wc-mobile-overlay-title">Your Matchups</span>
+      {/* ── Mobile: Matchup switcher drawer (hamburger) ───────────────────────── */}
+      {matchupDrawerOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="wc-matchup-drawer-backdrop"
+            onClick={() => setMatchupDrawerOpen(false)}
+          />
+          {/* Drawer */}
+          <div className="wc-matchup-drawer">
+            <div className="wc-matchup-drawer-header">
+              <span className="wc-matchup-drawer-title">Your Matchups</span>
+              <button
+                className="wc-topbar-icon-btn"
+                aria-label="Close"
+                onClick={() => setMatchupDrawerOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="wc-matchup-drawer-list">
+              {matchups.map((m) => {
+                const oppName = m.opponentDisplayName ?? m.opponentEmail?.split('@')[0] ?? 'Pending';
+                const oppInit = initials(oppName);
+                const isActive = m.matchupId === selectedMatchupId;
+                return (
+                  <button
+                    key={m.matchupId}
+                    className={`wc-matchup-lobby-card${isActive ? ' wc-matchup-lobby-card--active' : ''}`}
+                    onClick={() => {
+                      setSelectedMatchupId(m.matchupId);
+                      setMatchupDrawerOpen(false);
+                      setMobileView('feed');
+                    }}
+                  >
+                    <div className="wc-matchup-lobby-avatar">
+                      {m.opponentAvatarUrl
+                        ? <img src={m.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
+                        : <span style={{ background: avatarColor(m.opponentEmail) }}>{oppInit}</span>}
+                    </div>
+                    <div className="wc-matchup-lobby-info">
+                      <span className="wc-matchup-lobby-name">vs {oppName}</span>
+                      <span className="wc-matchup-lobby-sub">FIFA World Cup &apos;26</span>
+                    </div>
+                    {isActive && (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path d="M3 8l4 4 6-7" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="wc-mobile-overlay-body">
-            {matchups.length === 0 && (
-              <p className="wc-subtitle" style={{ padding: '24px 16px' }}>No matchups yet. Create one to get started.</p>
-            )}
-            {matchups.map((m) => {
-              const oppName = m.opponentDisplayName ?? m.opponentEmail?.split('@')[0] ?? 'Pending';
-              const oppInit = initials(oppName);
-              const isActive = m.matchupId === selectedMatchupId;
-              return (
-                <button
-                  key={m.matchupId}
-                  className={`wc-matchup-lobby-card${isActive ? ' wc-matchup-lobby-card--active' : ''}`}
-                  onClick={() => {
-                    setSelectedMatchupId(m.matchupId);
-                    setMobileView('feed');
-                  }}
-                >
-                  <div className="wc-matchup-lobby-avatar">
-                    {m.opponentAvatarUrl
-                      ? <img src={m.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
-                      : <span style={{ background: avatarColor(m.opponentEmail) }}>{oppInit}</span>}
-                  </div>
-                  <div className="wc-matchup-lobby-info">
-                    <span className="wc-matchup-lobby-name">vs {oppName}</span>
-                    <span className="wc-matchup-lobby-sub">FIFA World Cup &apos;26</span>
-                  </div>
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="wc-matchup-lobby-chevron">
-                    <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        </>
       )}
 
       {/* ── Mobile: Chat full-screen ──────────────────────────────────────────── */}

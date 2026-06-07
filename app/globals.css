@@ -4646,6 +4646,104 @@ select {
   }
 }
 
+/* ── Hamburger button (mobile only) ─────────────────────────────────────────── */
+.wc-hamburger {
+  display: none; /* hidden on desktop */
+}
+
+@media (max-width: 767px) {
+  .wc-hamburger {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 36px;
+    height: 36px;
+    padding: 6px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    z-index: 1;
+  }
+
+  .wc-hamburger span {
+    display: block;
+    height: 2px;
+    width: 100%;
+    background: var(--text-0);
+    border-radius: 2px;
+    transition: opacity 0.15s;
+  }
+
+  .wc-hamburger:active span {
+    opacity: 0.5;
+  }
+}
+
+/* ── Matchup switcher drawer ─────────────────────────────────────────────────── */
+.wc-matchup-drawer-backdrop {
+  display: none;
+}
+
+.wc-matchup-drawer {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .wc-matchup-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .wc-matchup-drawer {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: var(--mobile-nav-h);
+    width: min(80vw, 300px);
+    z-index: 50;
+    background: var(--bg);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .wc-matchup-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: var(--topbar-h);
+    padding: 0 16px 0 20px;
+    border-bottom: 1px solid var(--separator);
+    flex-shrink: 0;
+  }
+
+  .wc-matchup-drawer-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-0);
+    letter-spacing: -0.01em;
+  }
+
+  .wc-matchup-drawer-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+
+  /* Drawer lobby cards — full width, no border-radius on sides */
+  .wc-matchup-drawer-list .wc-matchup-lobby-card {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+}
+
 /* ── Reduced motion ──────────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
