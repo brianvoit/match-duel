@@ -4790,7 +4790,7 @@ select {
     border: 1.5px solid var(--accent);
   }
 
-  /* Drawer lobby cards — full width, flush edges */
+  /* Drawer lobby cards — full width, flush edges, solid bg to hide delete btn */
   .wc-matchup-drawer-list .wc-matchup-lobby-card {
     border-radius: 0;
     border-left: none;
@@ -4799,6 +4799,11 @@ select {
     position: relative;
     z-index: 1;
     will-change: transform;
+    background: var(--bg-0);
+  }
+
+  .wc-matchup-drawer-list .wc-matchup-lobby-card--active {
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-0));
   }
 
   /* Swipe-to-delete row wrapper */
