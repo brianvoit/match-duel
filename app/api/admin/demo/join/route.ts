@@ -13,11 +13,20 @@ import { initializeFirstRoundPickOrder } from '@/lib/supabase/pickOrder';
  *
  * - Verifies the caller is already a participant in the matchup.
  * - Rejects if the matchup already has 2+ participants.
- * - Creates (or finds) a permanent bot user: bot@demo.local
+ * - Picks the first bot (from the pool of 4) not already opposing the caller
+ *   in another matchup — so each matchup gets a different-named opponent.
  * - Inserts the bot as the second matchup_participant.
  * - Initialises Round 1 pick order (caller = creator picks first in most
  *   rounds; bot = joiner picks first in Round 1).
  */
+
+const BOT_EMAILS = [
+  'bot@demo.local',
+  'bot2@demo.local',
+  'bot3@demo.local',
+  'bot4@demo.local',
+];
+
 export async function POST(request: NextRequest) {
   try {
     const auth = await createServerSupabaseClient();
@@ -78,29 +87,61 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Matchup not found.' }, { status: 404 });
     }
 
-    // Find or create the demo bot user
-    const botEmail = 'bot@demo.local';
-    let botUserId: string;
+    // Find all bots already opposing the caller in any other matchup
+    const { data: callerMatchups } = await service
+      .from('matchup_participant')
+      .select('matchup_id')
+      .eq('user_id', callerUser.id);
 
-    const { data: existingBot } = await service
-      .from('app_user')
-      .select('id')
-      .eq('email', botEmail)
-      .maybeSingle();
+    const callerMatchupIds = (callerMatchups ?? []).map((m) => m.matchup_id as string);
 
-    if (existingBot) {
-      botUserId = existingBot.id as string;
-    } else {
-      const { data: newBot, error: botError } = await service
+    // Find all bot user IDs already in any of the caller's matchups
+    const usedBotIds = new Set<string>();
+    if (callerMatchupIds.length > 0) {
+      const { data: usedParticipants } = await service
+        .from('matchup_participant')
+        .select('user_id')
+        .in('matchup_id', callerMatchupIds)
+        .neq('user_id', callerUser.id);
+
+      // Cross-reference with bot user records
+      const { data: allBots } = await service
         .from('app_user')
-        .insert({ email: botEmail, display_name: 'Demo Opponent' })
         .select('id')
-        .single();
-      if (botError || !newBot) throw new Error('Failed to create bot user.');
-      botUserId = newBot.id as string;
+        .in('email', BOT_EMAILS);
+
+      const botIdSet = new Set((allBots ?? []).map((b) => b.id as string));
+      for (const p of usedParticipants ?? []) {
+        if (botIdSet.has(p.user_id as string)) usedBotIds.add(p.user_id as string);
+      }
     }
 
-    // Check bot isn't already in this matchup
+    // Fetch all bot users (they must already exist in the DB)
+    const { data: botUsers } = await service
+      .from('app_user')
+      .select('id, email, display_name')
+      .in('email', BOT_EMAILS);
+
+    if (!botUsers || botUsers.length === 0) {
+      return NextResponse.json({ ok: false, error: 'No demo bots found in DB.' }, { status: 500 });
+    }
+
+    // Sort by BOT_EMAILS order and pick first one not already used
+    const ordered = BOT_EMAILS
+      .map((email) => botUsers.find((b) => b.email === email))
+      .filter(Boolean) as typeof botUsers;
+
+    const chosenBot = ordered.find((b) => !usedBotIds.has(b.id as string));
+    if (!chosenBot) {
+      return NextResponse.json(
+        { ok: false, error: 'All demo opponents are already in your matchups.' },
+        { status: 409 }
+      );
+    }
+
+    const botUserId = chosenBot.id as string;
+
+    // Sanity check: bot isn't already in this specific matchup
     const botAlreadyIn = participants?.some((p) => p.user_id === botUserId);
     if (botAlreadyIn) {
       return NextResponse.json(
@@ -129,7 +170,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       matchupId,
-      botEmail,
+      botEmail: chosenBot.email,
+      botDisplayName: chosenBot.display_name,
       botParticipantId: botParticipant.id
     });
   } catch (error) {
