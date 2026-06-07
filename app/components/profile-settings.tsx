@@ -190,10 +190,6 @@ export function ProfileSettings({
         </div>
       </div>
 
-      <ul className="wc-profile-list">
-        <li>Reduced motion is respected automatically.</li>
-      </ul>
-
       <button className="wc-signout-btn" type="button" onClick={onSignOut}>
         Sign Out
       </button>

@@ -4497,6 +4497,7 @@ select {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    padding: 16px 20px;
   }
 
   .wc-mobile-overlay-body--chat {
