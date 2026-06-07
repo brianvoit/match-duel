@@ -4712,7 +4712,7 @@ select {
     bottom: 0;
     width: min(80vw, 280px);
     z-index: 30;
-    background: var(--bg);
+    background: var(--bg-0);
     box-shadow: 4px 0 32px rgba(0, 0, 0, 0.18);
     animation: slideInLeft 0.22s ease;
   }
