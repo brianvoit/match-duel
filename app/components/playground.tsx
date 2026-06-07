@@ -1226,7 +1226,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           );
         })()}
 
-        {/* Previous World Cup Meetings */}
+        {/* Previous Meetings (competitive, non-friendly) */}
         {selectedFixtureId && (
           <div className="wc-fd-section">
             <h3 className="wc-fd-section-label">Previous Meetings</h3>
@@ -1251,7 +1251,7 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 })}
               </div>
             ) : (
-              <p className="wc-h2h-none">These teams have never met at a World Cup.</p>
+              <p className="wc-h2h-none">These teams have never met in a competitive match.</p>
             )}
           </div>
         )}
