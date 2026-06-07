@@ -36,22 +36,24 @@ export function PickSummaryContent({ stats, onShowUnpicked, onDismiss }: PickSum
         </div>
       </div>
 
-      <div className="wc-pick-summary-rows">
-        {urgent > 0 && (
-          <div className="wc-pick-summary-row wc-pick-summary-row--urgent">
-            <span className="wc-pick-summary-dot wc-pick-summary-dot--urgent" />
-            <span className="wc-pick-summary-count">{urgent}</span>
-            <span className="wc-pick-summary-desc">{urgent === 1 ? 'locks' : 'lock'} in the next 24 hours</span>
-          </div>
-        )}
-        {soon > 0 && (
-          <div className="wc-pick-summary-row wc-pick-summary-row--soon">
-            <span className="wc-pick-summary-dot wc-pick-summary-dot--soon" />
-            <span className="wc-pick-summary-count">{soon}</span>
-            <span className="wc-pick-summary-desc">{soon === 1 ? 'locks' : 'lock'} in 1–3 days</span>
-          </div>
-        )}
-      </div>
+      {(urgent > 0 || soon > 0) && (
+        <div className="wc-pick-summary-rows">
+          {urgent > 0 && (
+            <div className="wc-pick-summary-row wc-pick-summary-row--urgent">
+              <span className="wc-pick-summary-dot wc-pick-summary-dot--urgent" />
+              <span className="wc-pick-summary-count">{urgent}</span>
+              <span className="wc-pick-summary-desc">{urgent === 1 ? 'locks' : 'lock'} in the next 24 hours</span>
+            </div>
+          )}
+          {soon > 0 && (
+            <div className="wc-pick-summary-row wc-pick-summary-row--soon">
+              <span className="wc-pick-summary-dot wc-pick-summary-dot--soon" />
+              <span className="wc-pick-summary-count">{soon}</span>
+              <span className="wc-pick-summary-desc">{soon === 1 ? 'locks' : 'lock'} in 1–3 days</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="wc-onboarding-actions" style={{ marginTop: 8 }}>
         <button className="wc-onboarding-skip" type="button" onClick={onDismiss}>
