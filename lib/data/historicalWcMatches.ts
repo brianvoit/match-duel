@@ -863,4 +863,162 @@ export const HISTORICAL_WC_MATCHES: HistoricalMatch[] = [
   { year: 2014, stage: 'Semi-finals', home: 'Netherlands', away: 'Argentina', homeGoals: 0, awayGoals: 0 },
   { year: 2014, stage: 'Play-off for third place', home: 'Brazil', away: 'Netherlands', homeGoals: 0, awayGoals: 3 },
   { year: 2014, stage: 'Final', home: 'Germany', away: 'Argentina', homeGoals: 1, awayGoals: 0 },
+
+  // ── 2018 Russia ──────────────────────────────────────────────────────────────
+  // Group A
+  { year: 2018, stage: 'Group A', home: 'Russia', away: 'Saudi Arabia', homeGoals: 5, awayGoals: 0 },
+  { year: 2018, stage: 'Group A', home: 'Egypt', away: 'Uruguay', homeGoals: 0, awayGoals: 1 },
+  { year: 2018, stage: 'Group A', home: 'Russia', away: 'Egypt', homeGoals: 3, awayGoals: 0 },
+  { year: 2018, stage: 'Group A', home: 'Uruguay', away: 'Saudi Arabia', homeGoals: 1, awayGoals: 0 },
+  { year: 2018, stage: 'Group A', home: 'Uruguay', away: 'Russia', homeGoals: 3, awayGoals: 0 },
+  { year: 2018, stage: 'Group A', home: 'Saudi Arabia', away: 'Egypt', homeGoals: 2, awayGoals: 1 },
+  // Group B
+  { year: 2018, stage: 'Group B', home: 'Morocco', away: 'Iran', homeGoals: 0, awayGoals: 1 },
+  { year: 2018, stage: 'Group B', home: 'Portugal', away: 'Spain', homeGoals: 3, awayGoals: 3 },
+  { year: 2018, stage: 'Group B', home: 'Portugal', away: 'Morocco', homeGoals: 1, awayGoals: 0 },
+  { year: 2018, stage: 'Group B', home: 'Iran', away: 'Spain', homeGoals: 0, awayGoals: 1 },
+  { year: 2018, stage: 'Group B', home: 'Iran', away: 'Portugal', homeGoals: 1, awayGoals: 1 },
+  { year: 2018, stage: 'Group B', home: 'Spain', away: 'Morocco', homeGoals: 2, awayGoals: 2 },
+  // Group C
+  { year: 2018, stage: 'Group C', home: 'France', away: 'Australia', homeGoals: 2, awayGoals: 1 },
+  { year: 2018, stage: 'Group C', home: 'Peru', away: 'Denmark', homeGoals: 0, awayGoals: 1 },
+  { year: 2018, stage: 'Group C', home: 'France', away: 'Peru', homeGoals: 1, awayGoals: 0 },
+  { year: 2018, stage: 'Group C', home: 'Denmark', away: 'Australia', homeGoals: 1, awayGoals: 1 },
+  { year: 2018, stage: 'Group C', home: 'France', away: 'Denmark', homeGoals: 0, awayGoals: 0 },
+  { year: 2018, stage: 'Group C', home: 'Australia', away: 'Peru', homeGoals: 0, awayGoals: 2 },
+  // Group D
+  { year: 2018, stage: 'Group D', home: 'Argentina', away: 'Iceland', homeGoals: 1, awayGoals: 1 },
+  { year: 2018, stage: 'Group D', home: 'Croatia', away: 'Nigeria', homeGoals: 2, awayGoals: 0 },
+  { year: 2018, stage: 'Group D', home: 'Argentina', away: 'Croatia', homeGoals: 0, awayGoals: 3 },
+  { year: 2018, stage: 'Group D', home: 'Nigeria', away: 'Iceland', homeGoals: 2, awayGoals: 0 },
+  { year: 2018, stage: 'Group D', home: 'Iceland', away: 'Croatia', homeGoals: 1, awayGoals: 2 },
+  { year: 2018, stage: 'Group D', home: 'Nigeria', away: 'Argentina', homeGoals: 1, awayGoals: 2 },
+  // Group E
+  { year: 2018, stage: 'Group E', home: 'Costa Rica', away: 'Serbia', homeGoals: 0, awayGoals: 1 },
+  { year: 2018, stage: 'Group E', home: 'Brazil', away: 'Switzerland', homeGoals: 1, awayGoals: 1 },
+  { year: 2018, stage: 'Group E', home: 'Brazil', away: 'Costa Rica', homeGoals: 2, awayGoals: 0 },
+  { year: 2018, stage: 'Group E', home: 'Serbia', away: 'Switzerland', homeGoals: 1, awayGoals: 2 },
+  { year: 2018, stage: 'Group E', home: 'Serbia', away: 'Brazil', homeGoals: 0, awayGoals: 2 },
+  { year: 2018, stage: 'Group E', home: 'Switzerland', away: 'Costa Rica', homeGoals: 2, awayGoals: 2 },
+  // Group F
+  { year: 2018, stage: 'Group F', home: 'Germany', away: 'Mexico', homeGoals: 0, awayGoals: 1 },
+  { year: 2018, stage: 'Group F', home: 'Sweden', away: 'South Korea', homeGoals: 1, awayGoals: 0 },
+  { year: 2018, stage: 'Group F', home: 'Germany', away: 'Sweden', homeGoals: 2, awayGoals: 1 },
+  { year: 2018, stage: 'Group F', home: 'South Korea', away: 'Mexico', homeGoals: 1, awayGoals: 2 },
+  { year: 2018, stage: 'Group F', home: 'South Korea', away: 'Germany', homeGoals: 2, awayGoals: 0 },
+  { year: 2018, stage: 'Group F', home: 'Mexico', away: 'Sweden', homeGoals: 0, awayGoals: 3 },
+  // Group G
+  { year: 2018, stage: 'Group G', home: 'Belgium', away: 'Panama', homeGoals: 3, awayGoals: 0 },
+  { year: 2018, stage: 'Group G', home: 'Tunisia', away: 'England', homeGoals: 1, awayGoals: 2 },
+  { year: 2018, stage: 'Group G', home: 'Belgium', away: 'Tunisia', homeGoals: 5, awayGoals: 2 },
+  { year: 2018, stage: 'Group G', home: 'England', away: 'Panama', homeGoals: 6, awayGoals: 1 },
+  { year: 2018, stage: 'Group G', home: 'England', away: 'Belgium', homeGoals: 0, awayGoals: 1 },
+  { year: 2018, stage: 'Group G', home: 'Panama', away: 'Tunisia', homeGoals: 1, awayGoals: 2 },
+  // Group H
+  { year: 2018, stage: 'Group H', home: 'Colombia', away: 'Japan', homeGoals: 1, awayGoals: 2 },
+  { year: 2018, stage: 'Group H', home: 'Poland', away: 'Senegal', homeGoals: 1, awayGoals: 2 },
+  { year: 2018, stage: 'Group H', home: 'Japan', away: 'Senegal', homeGoals: 2, awayGoals: 2 },
+  { year: 2018, stage: 'Group H', home: 'Poland', away: 'Colombia', homeGoals: 0, awayGoals: 3 },
+  { year: 2018, stage: 'Group H', home: 'Japan', away: 'Poland', homeGoals: 0, awayGoals: 1 },
+  { year: 2018, stage: 'Group H', home: 'Senegal', away: 'Colombia', homeGoals: 0, awayGoals: 1 },
+  // Round of 16
+  { year: 2018, stage: 'Round of 16', home: 'France', away: 'Argentina', homeGoals: 4, awayGoals: 3 },
+  { year: 2018, stage: 'Round of 16', home: 'Uruguay', away: 'Portugal', homeGoals: 2, awayGoals: 1 },
+  { year: 2018, stage: 'Round of 16', home: 'Russia', away: 'Spain', homeGoals: 1, awayGoals: 1 },
+  { year: 2018, stage: 'Round of 16', home: 'Croatia', away: 'Denmark', homeGoals: 1, awayGoals: 1 },
+  { year: 2018, stage: 'Round of 16', home: 'Brazil', away: 'Mexico', homeGoals: 2, awayGoals: 0 },
+  { year: 2018, stage: 'Round of 16', home: 'Belgium', away: 'Japan', homeGoals: 3, awayGoals: 2 },
+  { year: 2018, stage: 'Round of 16', home: 'Sweden', away: 'Switzerland', homeGoals: 1, awayGoals: 0 },
+  { year: 2018, stage: 'Round of 16', home: 'Colombia', away: 'England', homeGoals: 1, awayGoals: 1 },
+  // Quarter-finals
+  { year: 2018, stage: 'Quarter-finals', home: 'Uruguay', away: 'France', homeGoals: 0, awayGoals: 2 },
+  { year: 2018, stage: 'Quarter-finals', home: 'Brazil', away: 'Belgium', homeGoals: 1, awayGoals: 2 },
+  { year: 2018, stage: 'Quarter-finals', home: 'Sweden', away: 'England', homeGoals: 0, awayGoals: 2 },
+  { year: 2018, stage: 'Quarter-finals', home: 'Russia', away: 'Croatia', homeGoals: 2, awayGoals: 2 },
+  // Semi-finals
+  { year: 2018, stage: 'Semi-finals', home: 'France', away: 'Belgium', homeGoals: 1, awayGoals: 0 },
+  { year: 2018, stage: 'Semi-finals', home: 'Croatia', away: 'England', homeGoals: 2, awayGoals: 1 },
+  // Third place
+  { year: 2018, stage: 'Third place', home: 'Belgium', away: 'England', homeGoals: 2, awayGoals: 0 },
+  // Final
+  { year: 2018, stage: 'Final', home: 'France', away: 'Croatia', homeGoals: 4, awayGoals: 2 },
+
+  // ── 2022 Qatar ───────────────────────────────────────────────────────────────
+  // Group A
+  { year: 2022, stage: 'Group A', home: 'Qatar', away: 'Ecuador', homeGoals: 0, awayGoals: 2 },
+  { year: 2022, stage: 'Group A', home: 'Senegal', away: 'Netherlands', homeGoals: 0, awayGoals: 2 },
+  { year: 2022, stage: 'Group A', home: 'Qatar', away: 'Senegal', homeGoals: 1, awayGoals: 3 },
+  { year: 2022, stage: 'Group A', home: 'Netherlands', away: 'Ecuador', homeGoals: 1, awayGoals: 1 },
+  { year: 2022, stage: 'Group A', home: 'Netherlands', away: 'Qatar', homeGoals: 2, awayGoals: 0 },
+  { year: 2022, stage: 'Group A', home: 'Ecuador', away: 'Senegal', homeGoals: 1, awayGoals: 2 },
+  // Group B
+  { year: 2022, stage: 'Group B', home: 'England', away: 'Iran', homeGoals: 6, awayGoals: 2 },
+  { year: 2022, stage: 'Group B', home: 'United States', away: 'Wales', homeGoals: 1, awayGoals: 1 },
+  { year: 2022, stage: 'Group B', home: 'Wales', away: 'Iran', homeGoals: 0, awayGoals: 2 },
+  { year: 2022, stage: 'Group B', home: 'England', away: 'United States', homeGoals: 0, awayGoals: 0 },
+  { year: 2022, stage: 'Group B', home: 'Wales', away: 'England', homeGoals: 0, awayGoals: 3 },
+  { year: 2022, stage: 'Group B', home: 'Iran', away: 'United States', homeGoals: 0, awayGoals: 1 },
+  // Group C
+  { year: 2022, stage: 'Group C', home: 'Argentina', away: 'Saudi Arabia', homeGoals: 1, awayGoals: 2 },
+  { year: 2022, stage: 'Group C', home: 'Mexico', away: 'Poland', homeGoals: 0, awayGoals: 0 },
+  { year: 2022, stage: 'Group C', home: 'Poland', away: 'Saudi Arabia', homeGoals: 2, awayGoals: 0 },
+  { year: 2022, stage: 'Group C', home: 'Argentina', away: 'Mexico', homeGoals: 2, awayGoals: 0 },
+  { year: 2022, stage: 'Group C', home: 'Poland', away: 'Argentina', homeGoals: 0, awayGoals: 2 },
+  { year: 2022, stage: 'Group C', home: 'Saudi Arabia', away: 'Mexico', homeGoals: 1, awayGoals: 2 },
+  // Group D
+  { year: 2022, stage: 'Group D', home: 'Denmark', away: 'Tunisia', homeGoals: 0, awayGoals: 0 },
+  { year: 2022, stage: 'Group D', home: 'France', away: 'Australia', homeGoals: 4, awayGoals: 1 },
+  { year: 2022, stage: 'Group D', home: 'Tunisia', away: 'Australia', homeGoals: 0, awayGoals: 1 },
+  { year: 2022, stage: 'Group D', home: 'France', away: 'Denmark', homeGoals: 2, awayGoals: 1 },
+  { year: 2022, stage: 'Group D', home: 'Australia', away: 'Denmark', homeGoals: 1, awayGoals: 0 },
+  { year: 2022, stage: 'Group D', home: 'Tunisia', away: 'France', homeGoals: 1, awayGoals: 0 },
+  // Group E
+  { year: 2022, stage: 'Group E', home: 'Germany', away: 'Japan', homeGoals: 1, awayGoals: 2 },
+  { year: 2022, stage: 'Group E', home: 'Spain', away: 'Costa Rica', homeGoals: 7, awayGoals: 0 },
+  { year: 2022, stage: 'Group E', home: 'Japan', away: 'Costa Rica', homeGoals: 0, awayGoals: 1 },
+  { year: 2022, stage: 'Group E', home: 'Spain', away: 'Germany', homeGoals: 1, awayGoals: 1 },
+  { year: 2022, stage: 'Group E', home: 'Japan', away: 'Spain', homeGoals: 2, awayGoals: 1 },
+  { year: 2022, stage: 'Group E', home: 'Costa Rica', away: 'Germany', homeGoals: 2, awayGoals: 4 },
+  // Group F
+  { year: 2022, stage: 'Group F', home: 'Morocco', away: 'Croatia', homeGoals: 0, awayGoals: 0 },
+  { year: 2022, stage: 'Group F', home: 'Belgium', away: 'Canada', homeGoals: 1, awayGoals: 0 },
+  { year: 2022, stage: 'Group F', home: 'Belgium', away: 'Morocco', homeGoals: 0, awayGoals: 2 },
+  { year: 2022, stage: 'Group F', home: 'Croatia', away: 'Canada', homeGoals: 4, awayGoals: 1 },
+  { year: 2022, stage: 'Group F', home: 'Croatia', away: 'Belgium', homeGoals: 0, awayGoals: 0 },
+  { year: 2022, stage: 'Group F', home: 'Canada', away: 'Morocco', homeGoals: 1, awayGoals: 2 },
+  // Group G
+  { year: 2022, stage: 'Group G', home: 'Switzerland', away: 'Cameroon', homeGoals: 1, awayGoals: 0 },
+  { year: 2022, stage: 'Group G', home: 'Brazil', away: 'Serbia', homeGoals: 2, awayGoals: 0 },
+  { year: 2022, stage: 'Group G', home: 'Cameroon', away: 'Serbia', homeGoals: 3, awayGoals: 3 },
+  { year: 2022, stage: 'Group G', home: 'Brazil', away: 'Switzerland', homeGoals: 1, awayGoals: 0 },
+  { year: 2022, stage: 'Group G', home: 'Cameroon', away: 'Brazil', homeGoals: 1, awayGoals: 0 },
+  { year: 2022, stage: 'Group G', home: 'Serbia', away: 'Switzerland', homeGoals: 2, awayGoals: 3 },
+  // Group H
+  { year: 2022, stage: 'Group H', home: 'Uruguay', away: 'South Korea', homeGoals: 0, awayGoals: 0 },
+  { year: 2022, stage: 'Group H', home: 'Portugal', away: 'Ghana', homeGoals: 3, awayGoals: 2 },
+  { year: 2022, stage: 'Group H', home: 'South Korea', away: 'Ghana', homeGoals: 2, awayGoals: 3 },
+  { year: 2022, stage: 'Group H', home: 'Portugal', away: 'Uruguay', homeGoals: 2, awayGoals: 0 },
+  { year: 2022, stage: 'Group H', home: 'Ghana', away: 'Uruguay', homeGoals: 0, awayGoals: 2 },
+  { year: 2022, stage: 'Group H', home: 'South Korea', away: 'Portugal', homeGoals: 2, awayGoals: 1 },
+  // Round of 16
+  { year: 2022, stage: 'Round of 16', home: 'Netherlands', away: 'United States', homeGoals: 3, awayGoals: 1 },
+  { year: 2022, stage: 'Round of 16', home: 'Argentina', away: 'Australia', homeGoals: 2, awayGoals: 1 },
+  { year: 2022, stage: 'Round of 16', home: 'France', away: 'Poland', homeGoals: 3, awayGoals: 1 },
+  { year: 2022, stage: 'Round of 16', home: 'England', away: 'Senegal', homeGoals: 3, awayGoals: 0 },
+  { year: 2022, stage: 'Round of 16', home: 'Japan', away: 'Croatia', homeGoals: 1, awayGoals: 1 },
+  { year: 2022, stage: 'Round of 16', home: 'Brazil', away: 'South Korea', homeGoals: 4, awayGoals: 1 },
+  { year: 2022, stage: 'Round of 16', home: 'Morocco', away: 'Spain', homeGoals: 0, awayGoals: 0 },
+  { year: 2022, stage: 'Round of 16', home: 'Portugal', away: 'Switzerland', homeGoals: 6, awayGoals: 1 },
+  // Quarter-finals
+  { year: 2022, stage: 'Quarter-finals', home: 'Croatia', away: 'Brazil', homeGoals: 1, awayGoals: 1 },
+  { year: 2022, stage: 'Quarter-finals', home: 'Netherlands', away: 'Argentina', homeGoals: 2, awayGoals: 2 },
+  { year: 2022, stage: 'Quarter-finals', home: 'Morocco', away: 'Portugal', homeGoals: 1, awayGoals: 0 },
+  { year: 2022, stage: 'Quarter-finals', home: 'England', away: 'France', homeGoals: 1, awayGoals: 2 },
+  // Semi-finals
+  { year: 2022, stage: 'Semi-finals', home: 'Argentina', away: 'Croatia', homeGoals: 3, awayGoals: 0 },
+  { year: 2022, stage: 'Semi-finals', home: 'France', away: 'Morocco', homeGoals: 2, awayGoals: 0 },
+  // Third place
+  { year: 2022, stage: 'Third place', home: 'Croatia', away: 'Morocco', homeGoals: 2, awayGoals: 1 },
+  // Final
+  { year: 2022, stage: 'Final', home: 'Argentina', away: 'France', homeGoals: 3, awayGoals: 3 },
 ];

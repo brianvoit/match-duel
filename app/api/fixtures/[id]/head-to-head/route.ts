@@ -21,10 +21,32 @@ export async function GET(
 
   const home = fixture.home_team as string;
   const away = fixture.away_team as string;
-  const teams = new Set([home, away]);
+
+  // Historical data uses legacy names; map current fixture names to their aliases
+  const ALIASES: Record<string, string[]> = {
+    'USA':              ['United States'],
+    'Korea Republic':   ['South Korea'],
+    'Czechia':          ['Czech Republic'],
+    "Côte d'Ivoire":   ['Ivory Coast'],
+    'IR Iran':          ['Iran'],
+    'Congo DR':         ['DR Congo'],
+    'Türkiye':          ['Turkey'],
+  };
+
+  function allNames(team: string): Set<string> {
+    const s = new Set([team]);
+    for (const alias of (ALIASES[team] ?? [])) s.add(alias);
+    return s;
+  }
+
+  const homeNames = allNames(home);
+  const awayNames = allNames(away);
 
   const meetings = HISTORICAL_WC_MATCHES
-    .filter((m) => teams.has(m.home) && teams.has(m.away))
+    .filter(m =>
+      (homeNames.has(m.home) && awayNames.has(m.away)) ||
+      (awayNames.has(m.home) && homeNames.has(m.away))
+    )
     .sort((a, b) => b.year - a.year)
     .slice(0, 5);
 
