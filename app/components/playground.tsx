@@ -417,6 +417,15 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
       .catch(() => {});
   }, [selectedFixtureId]);
 
+  // Fetch head-to-head history whenever a fixture is selected
+  useEffect(() => {
+    if (!selectedFixtureId) { setHeadToHead([]); setH2hHome(''); setH2hAway(''); return; }
+    fetch(`/api/fixtures/${selectedFixtureId}/head-to-head`)
+      .then(r => r.json())
+      .then(d => { setHeadToHead(d.meetings ?? []); setH2hHome(d.home ?? ''); setH2hAway(d.away ?? ''); })
+      .catch(() => {});
+  }, [selectedFixtureId]);
+
   // Fetch squad lineups when the Squad tab is active
   useEffect(() => {
     if (contentTab !== 'squad' || !selectedFixtureId) { setSquadData(null); return; }
@@ -1218,28 +1227,32 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
         })()}
 
         {/* Previous World Cup Meetings */}
-        {headToHead.length > 0 && (
+        {selectedFixtureId && (
           <div className="wc-fd-section">
             <h3 className="wc-fd-section-label">Previous Meetings</h3>
-            <div className="wc-card wc-h2h-history">
-              {headToHead.map((m, i) => {
-                const isH2hHomeFixtureHome = m.home === h2hHome;
-                const fixtureHomeGoals = isH2hHomeFixtureHome ? m.homeGoals : m.awayGoals;
-                const fixtureAwayGoals = isH2hHomeFixtureHome ? m.awayGoals : m.homeGoals;
-                const homeWon = (fixtureHomeGoals ?? 0) > (fixtureAwayGoals ?? 0);
-                const awayWon = (fixtureAwayGoals ?? 0) > (fixtureHomeGoals ?? 0);
-                return (
-                  <div key={i} className="wc-h2h-row">
-                    <span className={`wc-h2h-row-team${homeWon ? ' wc-h2h-row-team--winner' : ''}`}>{h2hHome}</span>
-                    <span className={`wc-h2h-row-score wc-h2h-row-score--${homeWon ? 'home' : awayWon ? 'away' : 'draw'}`}>
-                      {fixtureHomeGoals ?? '?'} – {fixtureAwayGoals ?? '?'}
-                    </span>
-                    <span className={`wc-h2h-row-team wc-h2h-row-team--right${awayWon ? ' wc-h2h-row-team--winner' : ''}`}>{h2hAway}</span>
-                    <span className="wc-h2h-row-meta">{m.year} · {m.stage}</span>
-                  </div>
-                );
-              })}
-            </div>
+            {headToHead.length > 0 ? (
+              <div className="wc-card wc-h2h-history">
+                {headToHead.map((m, i) => {
+                  const isH2hHomeFixtureHome = m.home === h2hHome;
+                  const fixtureHomeGoals = isH2hHomeFixtureHome ? m.homeGoals : m.awayGoals;
+                  const fixtureAwayGoals = isH2hHomeFixtureHome ? m.awayGoals : m.homeGoals;
+                  const homeWon = (fixtureHomeGoals ?? 0) > (fixtureAwayGoals ?? 0);
+                  const awayWon = (fixtureAwayGoals ?? 0) > (fixtureHomeGoals ?? 0);
+                  return (
+                    <div key={i} className="wc-h2h-row">
+                      <span className={`wc-h2h-row-team${homeWon ? ' wc-h2h-row-team--winner' : ''}`}>{h2hHome}</span>
+                      <span className={`wc-h2h-row-score wc-h2h-row-score--${homeWon ? 'home' : awayWon ? 'away' : 'draw'}`}>
+                        {fixtureHomeGoals ?? '?'} – {fixtureAwayGoals ?? '?'}
+                      </span>
+                      <span className={`wc-h2h-row-team wc-h2h-row-team--right${awayWon ? ' wc-h2h-row-team--winner' : ''}`}>{h2hAway}</span>
+                      <span className="wc-h2h-row-meta">{m.year} · {m.stage}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="wc-h2h-none">These teams have never met at a World Cup.</p>
+            )}
           </div>
         )}
 

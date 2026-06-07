@@ -3770,6 +3770,12 @@ select {
   flex-direction: column;
   gap: 0;
 }
+.wc-h2h-none {
+  font-size: 0.82rem;
+  color: var(--text-2);
+  margin: 0;
+  padding: 4px 0;
+}
 
 .wc-h2h-row {
   display: grid;
