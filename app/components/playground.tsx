@@ -95,6 +95,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [copyConfirmed, setCopyConfirmed] = useState(false);
   const [cancelMatchupId, setCancelMatchupId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const drawerRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const drawerTouchStartX = useRef(0);
 
   // ── Filter state ───────────────────────────────────────────────────────────
   const [filterGroup, setFilterGroup] = useState<string | null>(null);
@@ -2590,29 +2592,64 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 const oppInit = initials(oppName);
                 const isActive = m.matchupId === selectedMatchupId;
                 return (
-                  <button
-                    key={m.matchupId}
-                    className={`wc-matchup-lobby-card${isActive ? ' wc-matchup-lobby-card--active' : ''}`}
-                    onClick={() => {
-                      setSelectedMatchupId(m.matchupId);
-                      setMatchupDrawerOpen(false);
-                      setMobileView('feed');
-                    }}
-                  >
-                    <div className="wc-matchup-lobby-avatar">
-                      {m.opponentAvatarUrl
-                        ? <img src={m.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                        : <span style={{ background: avatarColor(m.opponentEmail), width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.85rem' }}>{oppInit}</span>}
-                    </div>
-                    <div className="wc-matchup-lobby-info">
-                      <span className="wc-matchup-lobby-name">vs {oppName}</span>
-                    </div>
-                    {isActive && (
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                        <path d="M3 8l4 4 6-7" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
-                  </button>
+                  <div key={m.matchupId} className="wc-swipe-row">
+                    {/* Delete action revealed on swipe */}
+                    <button
+                      className="wc-swipe-delete"
+                      onClick={() => {
+                        const el = drawerRowRefs.current.get(m.matchupId);
+                        if (el) { el.style.transition = 'transform 0.2s ease'; el.style.transform = 'translateX(0)'; }
+                        setCancelMatchupId(m.matchupId);
+                      }}
+                    >
+                      Delete
+                    </button>
+                    {/* Swipeable row */}
+                    <button
+                      ref={(el) => { if (el) drawerRowRefs.current.set(m.matchupId, el); else drawerRowRefs.current.delete(m.matchupId); }}
+                      className={`wc-matchup-lobby-card${isActive ? ' wc-matchup-lobby-card--active' : ''}`}
+                      onTouchStart={(e) => { drawerTouchStartX.current = e.touches[0].clientX; }}
+                      onTouchMove={(e) => {
+                        const dx = Math.min(0, e.touches[0].clientX - drawerTouchStartX.current);
+                        const el = drawerRowRefs.current.get(m.matchupId);
+                        if (el) { el.style.transition = 'none'; el.style.transform = `translateX(${Math.max(dx, -80)}px)`; }
+                      }}
+                      onTouchEnd={(e) => {
+                        const dx = e.changedTouches[0].clientX - drawerTouchStartX.current;
+                        const el = drawerRowRefs.current.get(m.matchupId);
+                        if (el) {
+                          el.style.transition = 'transform 0.2s ease';
+                          el.style.transform = dx < -40 ? 'translateX(-80px)' : 'translateX(0)';
+                        }
+                      }}
+                      onClick={() => {
+                        const el = drawerRowRefs.current.get(m.matchupId);
+                        // If the row is swiped open, close it instead of navigating
+                        if (el && el.style.transform === 'translateX(-80px)') {
+                          el.style.transition = 'transform 0.2s ease';
+                          el.style.transform = 'translateX(0)';
+                          return;
+                        }
+                        setSelectedMatchupId(m.matchupId);
+                        setMatchupDrawerOpen(false);
+                        setMobileView('feed');
+                      }}
+                    >
+                      <div className="wc-matchup-lobby-avatar">
+                        {m.opponentAvatarUrl
+                          ? <img src={m.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                          : <span style={{ background: avatarColor(m.opponentEmail), width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.85rem' }}>{oppInit}</span>}
+                      </div>
+                      <div className="wc-matchup-lobby-info">
+                        <span className="wc-matchup-lobby-name">vs {oppName}</span>
+                      </div>
+                      {isActive && (
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                          <path d="M3 8l4 4 6-7" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 );
               })}
             </div>
