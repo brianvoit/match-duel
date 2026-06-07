@@ -642,6 +642,29 @@ select {
 
 /* ── Utility: buttons ────────────────────────────────────────────────────────── */
 
+/* Modal action row: dismiss left, confirm right */
+.wc-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.wc-modal-dismiss {
+  background: none;
+  border: none;
+  padding: 6px 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.wc-modal-dismiss:hover {
+  color: var(--text-1);
+}
+
 .wc-btn {
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -1107,8 +1130,7 @@ select {
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--line);
-  background: var(--glass);
-  backdrop-filter: blur(14px);
+  background: var(--bg-0);
   overflow: hidden;
   transition: width 220ms ease;
 }
@@ -1118,8 +1140,8 @@ select {
 }
 
 .wc-leftnav--collapsed .wc-nav-item {
-  align-items: center;
-  padding: 8px 4px;
+  padding: 5px 4px;
+  justify-content: center;
 }
 
 .wc-nav-scroll {
@@ -1131,68 +1153,57 @@ select {
   gap: 3px;
 }
 
-.wc-nav-item-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+/* Swipe-to-delete wrapper */
+.wc-nav-swipe-row {
+  position: relative;
+  overflow: hidden;
 }
 
-.wc-nav-item-row .wc-nav-item {
-  flex: 1;
-  min-width: 0;
-}
-
-.wc-nav-cancel-btn {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+/* Delete button revealed on swipe */
+.wc-nav-swipe-delete {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 68px;
+  background: var(--danger);
+  color: #fff;
   border: none;
-  background: transparent;
-  color: var(--text-1);
-  font-size: 0.7rem;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+  cursor: pointer;
+  transition: background 120ms ease;
 }
-
-.wc-nav-item-row:hover .wc-nav-cancel-btn {
-  opacity: 1;
-}
-
-.wc-nav-cancel-btn:hover {
-  background: color-mix(in srgb, #ef4444 20%, transparent 80%);
-  color: #ef4444;
+.wc-nav-swipe-delete:hover {
+  background: color-mix(in srgb, var(--danger) 80%, #000 20%);
 }
 
 .wc-nav-item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  border: 1px solid transparent;
-  background: transparent;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  width: 100%;
+  border-radius: 0;
+  border: none;
+  /* Must match nav background so the hidden delete button doesn't bleed through */
+  background: var(--bg-0);
   color: var(--text-0);
   cursor: pointer;
   text-align: left;
   overflow: hidden;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease;
   min-height: 44px;
-  justify-content: center;
+  position: relative;
+  z-index: 1;
+  will-change: transform;
+  touch-action: pan-y;
 }
-
 
 .wc-nav-item:hover {
-  background: color-mix(in srgb, var(--glass-strong) 85%, var(--accent) 15%);
-}
-
-.wc-nav-item[aria-current='true'] {
-  background: color-mix(in srgb, var(--glass-strong) 60%, var(--accent) 40%);
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent 55%);
+  background: color-mix(in srgb, var(--bg-0) 85%, var(--accent) 15%);
 }
 
 .wc-nav-item-name {
@@ -1221,29 +1232,26 @@ select {
   letter-spacing: 0.02em;
 }
 
-/* Opponent avatar in collapsed nav */
+/* Opponent avatar — visible in both expanded and collapsed nav */
 .wc-nav-opp-avatar {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   color: #fff;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   user-select: none;
   flex-shrink: 0;
-  align-self: center;
+  object-fit: cover; /* for <img> */
+  transition: outline 120ms ease;
 }
 
-/* In collapsed mode: no background on the button, ring around the avatar instead */
-.wc-leftnav--collapsed .wc-nav-item[aria-current='true'] {
-  background: transparent;
-  border-color: transparent;
-}
-.wc-leftnav--collapsed .wc-nav-item[aria-current='true'] .wc-nav-opp-avatar {
-  outline: 2px solid var(--accent);
+/* Focus ring on the active matchup's avatar — works in both expanded + collapsed */
+.wc-nav-opp-avatar--active {
+  outline: 2.5px solid var(--accent);
   outline-offset: 2px;
 }
 

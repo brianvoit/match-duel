@@ -42,13 +42,6 @@ export function JoinButton({ inviteCode, isLoggedIn }: JoinButtonProps) {
       >
         Accept with Google
       </button>
-      <button
-        type="button"
-        className="wc-btn wc-btn-lg wc-btn-primary"
-        onClick={() => handleSignIn('apple')}
-      >
-        Accept with Apple
-      </button>
     </div>
   );
 }

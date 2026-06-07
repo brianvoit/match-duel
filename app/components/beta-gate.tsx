@@ -80,13 +80,6 @@ function OAuthButtons() {
       >
         Sign in with Google
       </button>
-      <button
-        type="button"
-        className="wc-btn wc-btn-lg wc-btn-primary"
-        onClick={() => signInWith('apple')}
-      >
-        Sign in with Apple
-      </button>
     </div>
   );
 }

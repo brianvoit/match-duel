@@ -46,7 +46,7 @@ export default async function HomePage({ searchParams }: PageProps) {
           </p>
         )}
         <BetaGate />
-        <p className="wc-landing-hint">Beta access · Sign in with Google or Apple</p>
+        <p className="wc-landing-hint">Beta access · Sign in with Google</p>
       </section>
 
       {/* ── How it works ────────────────────────────────────────────────── */}

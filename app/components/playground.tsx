@@ -106,6 +106,8 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
   const [loading, setLoading] = useState(false);
   const drawerRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const drawerTouchStartX = useRef(0);
+  const navRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const navDragStart = useRef(0);
 
   // ── Filter state ───────────────────────────────────────────────────────────
   const [filterGroup, setFilterGroup] = useState<string | null>(null);
@@ -2044,42 +2046,84 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
               </p>
             )}
             {matchups.map((m) => {
-              const oppName =
-                m.opponentDisplayName ?? m.opponentEmail?.split('@')[0] ?? null;
+              const oppName = m.opponentDisplayName ?? m.opponentEmail?.split('@')[0] ?? null;
               const oppInit = initials(oppName, '?');
               const isActive = m.matchupId === selectedMatchupId;
 
-              const isPending = !oppName && m.isCreator;
-
               return (
-                <div key={m.matchupId} className="wc-nav-item-row">
+                <div key={m.matchupId} className="wc-nav-swipe-row">
+                  {/* Delete revealed on swipe */}
                   <button
-                    className="wc-nav-item"
+                    className="wc-nav-swipe-delete"
+                    aria-label="Delete matchup"
+                    onClick={() => {
+                      const el = navRowRefs.current.get(m.matchupId);
+                      if (el) { el.style.transition = 'transform 0.2s ease'; el.style.transform = 'translateX(0)'; }
+                      setCancelMatchupId(m.matchupId);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+
+                  {/* Swipeable nav button */}
+                  <button
+                    ref={el => { if (el) navRowRefs.current.set(m.matchupId, el); else navRowRefs.current.delete(m.matchupId); }}
+                    className={`wc-nav-item${isActive ? ' wc-nav-item--active' : ''}`}
                     aria-current={isActive ? 'true' : undefined}
                     title={oppName ? `vs ${oppName}` : 'Pending opponent'}
-                    onClick={() => setSelectedMatchupId(m.matchupId)}
+                    onPointerDown={e => {
+                      navDragStart.current = e.clientX;
+                      (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+                    }}
+                    onPointerMove={e => {
+                      if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                      const dx = Math.min(0, e.clientX - navDragStart.current);
+                      if (Math.abs(dx) < 4) return;
+                      const el = navRowRefs.current.get(m.matchupId);
+                      if (el) { el.style.transition = 'none'; el.style.transform = `translateX(${Math.max(dx, -68)}px)`; }
+                    }}
+                    onPointerUp={e => {
+                      if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                      const dx = e.clientX - navDragStart.current;
+                      const el = navRowRefs.current.get(m.matchupId);
+                      if (el) { el.style.transition = 'transform 0.2s ease'; el.style.transform = dx < -34 ? 'translateX(-68px)' : 'translateX(0)'; }
+                    }}
+                    onClick={() => {
+                      const el = navRowRefs.current.get(m.matchupId);
+                      if (el && el.style.transform === 'translateX(-68px)') {
+                        el.style.transition = 'transform 0.2s ease';
+                        el.style.transform = 'translateX(0)';
+                        return;
+                      }
+                      setSelectedMatchupId(m.matchupId);
+                    }}
                   >
-                    {leftNavOpen ? (
-                      <span className="wc-nav-item-name">
-                        vs {oppName ?? <em style={{ color: 'var(--text-1)' }}>Pending</em>}
-                      </span>
+                    {/* Avatar — always visible */}
+                    {m.opponentAvatarUrl ? (
+                      <img
+                        className={`wc-nav-opp-avatar${isActive ? ' wc-nav-opp-avatar--active' : ''}`}
+                        src={m.opponentAvatarUrl}
+                        alt={oppName ?? ''}
+                        referrerPolicy="no-referrer"
+                      />
                     ) : (
-                      <span className="wc-nav-opp-avatar" aria-hidden="true"
-                        style={{ background: avatarColor(m.opponentEmail) }}>
+                      <span
+                        className={`wc-nav-opp-avatar${isActive ? ' wc-nav-opp-avatar--active' : ''}`}
+                        aria-hidden="true"
+                        style={{ background: avatarColor(m.opponentEmail) }}
+                      >
                         {oppName ? oppInit : '?'}
                       </span>
                     )}
+                    {/* Name — only when expanded */}
+                    {leftNavOpen && (
+                      <span className="wc-nav-item-name">
+                        vs {oppName ?? <em style={{ opacity: 0.6 }}>Pending</em>}
+                      </span>
+                    )}
                   </button>
-                  {isPending && leftNavOpen && (
-                    <button
-                      className="wc-nav-cancel-btn"
-                      title="Cancel matchup"
-                      aria-label="Cancel matchup"
-                      onClick={(e) => { e.stopPropagation(); setCancelMatchupId(m.matchupId); }}
-                    >
-                      ✕
-                    </button>
-                  )}
                 </div>
               );
             })}
@@ -2944,17 +2988,17 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
           <div className="wc-modal">
             <h3 style={{ margin: 0 }}>Cancel Matchup?</h3>
             <p className="wc-subtitle">This will delete the pending matchup and its invite link. This can&apos;t be undone.</p>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="wc-modal-actions">
               <button
-                className="wc-btn wc-btn-danger"
+                className="wc-modal-dismiss"
                 type="button"
                 disabled={loading}
                 onClick={cancelMatchup}
               >
-                {loading ? 'Cancelling…' : 'Yes, Cancel It'}
+                {loading ? 'CANCELLING…' : 'YES, CANCEL IT'}
               </button>
-              <button className="wc-btn" type="button" onClick={() => setCancelMatchupId(null)}>
-                Keep It
+              <button className="wc-btn wc-btn-primary" type="button" onClick={() => setCancelMatchupId(null)}>
+                KEEP IT
               </button>
             </div>
           </div>
@@ -2976,20 +3020,20 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 <h3 style={{ margin: 0 }}>Matchup Created!</h3>
                 <p className="wc-subtitle">Share this link with your opponent to start the duel.</p>
                 <div className="wc-invite-link-box">
-                  <span className="wc-invite-link-text">
+                  <span className="wc-invite-link-text" style={{ userSelect: 'text', cursor: 'text' }}>
                     {`${window.location.origin}/join/${createdInviteCode}`}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="wc-modal-actions">
+                  <button className="wc-modal-dismiss" type="button" onClick={closeCreateModal}>
+                    DISMISS
+                  </button>
                   <button
                     className="wc-btn wc-btn-primary"
                     type="button"
                     onClick={() => copyInviteLink(createdInviteCode)}
                   >
                     {copyConfirmed ? 'Copied!' : 'Copy Link'}
-                  </button>
-                  <button className="wc-btn" type="button" onClick={closeCreateModal}>
-                    Done
                   </button>
                 </div>
               </>
@@ -2999,7 +3043,10 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                 <p className="wc-subtitle">
                   A unique invite link will be generated for you to share with one opponent.
                 </p>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="wc-modal-actions">
+                  <button className="wc-modal-dismiss" type="button" onClick={closeCreateModal}>
+                    DISMISS
+                  </button>
                   <button
                     className="wc-btn wc-btn-primary"
                     type="button"
@@ -3007,9 +3054,6 @@ export function Playground({ userEmail, userAvatarUrl }: PlaygroundProps) {
                     onClick={createMatchup}
                   >
                     {loading ? 'Creating…' : 'Create'}
-                  </button>
-                  <button className="wc-btn" type="button" onClick={closeCreateModal}>
-                    Cancel
                   </button>
                 </div>
               </>
