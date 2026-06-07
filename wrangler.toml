@@ -13,6 +13,16 @@ custom_domain = true
 directory = ".open-next/assets"
 binding = "ASSETS"
 
+# Non-sensitive runtime config — safe to commit.
+# Sensitive values (API keys, JWTs) are stored as Worker Secrets.
+[vars]
+NEXT_PUBLIC_SUPABASE_URL    = "https://fqievqqzxrgvqrgknvas.supabase.co"
+SUPABASE_PROJECT_REF        = "fqievqqzxrgvqrgknvas"
+SUPABASE_FUNCTIONS_URL      = "https://fqievqqzxrgvqrgknvas.supabase.co/functions/v1"
+NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BFQjaP_QWa8fWGL-V9JffVfq8Gx4gfXZMCuB38tUVvuQQ2y03cwf_jWlo8EyMxEG32-GhdXlLs2K1KWkHH0hkKI"
+VAPID_SUBJECT               = "mailto:swimmer571@gmail.com"
+API_FOOTBALL_SEASON         = "2026"
+
 # Cron triggers — fire every 5 minutes to sync live scores + send pick reminders
 # 288 API-Football calls/day (well within the 7,500/day Pro plan limit)
 [triggers]
