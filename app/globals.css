@@ -514,9 +514,9 @@ select {
 }
 
 .wc-onboarding-next {
-  width: 44px;
   height: 44px;
-  border-radius: 50%;
+  padding: 0 20px;
+  border-radius: 22px;
   border: none;
   background: var(--accent);
   color: #fff;

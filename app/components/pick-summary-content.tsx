@@ -51,13 +51,6 @@ export function PickSummaryContent({ stats, onShowUnpicked, onDismiss }: PickSum
             <span className="wc-pick-summary-desc">{soon === 1 ? 'locks' : 'lock'} in 1–3 days</span>
           </div>
         )}
-        {later > 0 && (
-          <div className="wc-pick-summary-row">
-            <span className="wc-pick-summary-dot" />
-            <span className="wc-pick-summary-count">{later}</span>
-            <span className="wc-pick-summary-desc">later this round</span>
-          </div>
-        )}
       </div>
 
       <div className="wc-onboarding-actions" style={{ marginTop: 8 }}>
