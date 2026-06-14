@@ -289,15 +289,32 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   }, [fixtures, completedRoundFixtures, selectedFixtureId]);
 
   // First unpicked fixture that is my turn to pick (used for mobile auto-scroll)
-  const nextPickFixtureId = useMemo(() => {
-    const hasPickOrder = Object.keys(pickOrder).length > 0;
-    const candidate = visibleFixtures.find((f) => {
-      const myPick = pickMap[f.id] ?? f.myPickSide;
-      const isMyF  = !hasPickOrder || pickOrder[f.id] === myParticipantId;
-      return !myPick && isMyF && !f.isLocked && f.status !== 'FINAL';
-    });
-    return candidate?.id ?? null;
-  }, [visibleFixtures, pickMap, pickOrder, myParticipantId]);
+  // First fixture on (or after) today, in the viewer's local time — the anchor we
+  // auto-scroll the feed to on open / when returning to the list.
+  const todayAnchorFixtureId = useMemo(() => {
+    if (!fixtures.length) return null;
+    const now = new Date();
+    const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const sorted = [...fixtures].sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    );
+    const localMid = (iso: string) => {
+      const d = new Date(iso);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    };
+    // today's first match, else the next upcoming match, else the last fixture
+    return (sorted.find((f) => localMid(f.startsAt) >= todayMid) ?? sorted[sorted.length - 1]).id;
+  }, [fixtures]);
+
+  function scrollFeedToToday() {
+    const container = feedScrollRef.current;
+    if (!container || !todayAnchorFixtureId) return;
+    const el = container.querySelector<HTMLElement>(`[data-fixture-id="${todayAnchorFixtureId}"]`);
+    if (!el) return;
+    // Offset up ~44px so the day's matchday header stays visible above the match.
+    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 44;
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
 
   // ── Scorebug hint ──────────────────────────────────────────────────────────
 
@@ -613,26 +630,24 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     container.scrollTo({ top: offset, behavior: 'smooth' });
   }, [selectedFixtureId]);
 
-  // On mobile: auto-scroll the fixture list to the next unpicked fixture once per matchup load
+  // Auto-scroll the fixture list to today's date once per matchup load (app open
+  // / matchup switch). Delay lets React commit all fixture rows first.
   useEffect(() => {
-    if (!nextPickFixtureId || !visibleFixtures.length) return;
-    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
-    // Only fire once per matchup — don't re-scroll every time a pick is made
+    if (!todayAnchorFixtureId || !visibleFixtures.length) return;
     if (autoScrolledMatchup.current === selectedMatchupId) return;
     autoScrolledMatchup.current = selectedMatchupId ?? null;
-    // Delay to ensure React has committed all fixture rows to the DOM
-    const timer = setTimeout(() => {
-      const container = feedScrollRef.current;
-      if (!container) return;
-      const el = container.querySelector<HTMLElement>(`[data-fixture-id="${nextPickFixtureId}"]`);
-      if (!el) return;
-      const containerRect = container.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const scrollTop = container.scrollTop + (elRect.top - containerRect.top) - containerRect.height / 3;
-      container.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
-    }, 350);
+    const timer = setTimeout(scrollFeedToToday, 350);
     return () => clearTimeout(timer);
-  }, [nextPickFixtureId, visibleFixtures.length, selectedMatchupId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayAnchorFixtureId, visibleFixtures.length, selectedMatchupId]);
+
+  // Re-scroll to today whenever the user returns to the fixture list (mobile back).
+  useEffect(() => {
+    if (mobileView !== 'feed') return;
+    const timer = setTimeout(scrollFeedToToday, 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileView]);
 
   // Register service worker and check existing push subscription
   useEffect(() => {

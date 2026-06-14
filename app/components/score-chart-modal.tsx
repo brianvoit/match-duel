@@ -215,12 +215,15 @@ export function ScoreChartModal({
       const result = resultByStage.get(round.stage);
       const myE  = result?.participants.find(p => p.participantId === myParticipantId);
       const oppE = result?.participants.find(p => p.participantId !== myParticipantId);
+      const isCurrent = round.stage === currentStage;
+      // Settled rounds use the official result; the in-progress round uses the live
+      // provisional points (it won't settle until every fixture in it is final).
       return {
         label:      fmtStage(round.stage),
         shortLabel: STAGE_MOBILE_LABEL[round.stage] ?? fmtStage(round.stage),
         total, remaining, points: remaining * pts2,
-        myPts:  result ? (myE?.points  ?? 0) : null,
-        oppPts: result ? (oppE?.points ?? 0) : null,
+        myPts:  result ? (myE?.points  ?? 0) : isCurrent ? provisionalPoints.mine : null,
+        oppPts: result ? (oppE?.points ?? 0) : isCurrent ? provisionalPoints.opp  : null,
       };
     });
 
