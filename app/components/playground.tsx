@@ -306,14 +306,26 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     return (sorted.find((f) => localMid(f.startsAt) >= todayMid) ?? sorted[sorted.length - 1]).id;
   }, [fixtures]);
 
-  function scrollFeedToToday() {
+  // Combined height of the sticky stage header + matchday sub-header, so scrolls
+  // land a fixture just below them instead of behind them.
+  function feedStickyOffset(container: HTMLElement): number {
+    const roundH = container.querySelector('.wc-round-section-header')?.getBoundingClientRect().height ?? 33;
+    const mdH = container.querySelector('.wc-matchday-header')?.getBoundingClientRect().height ?? 28;
+    return roundH + mdH + 6;
+  }
+
+  function scrollFeedToFixture(fixtureId: string, behavior: ScrollBehavior = 'smooth') {
     const container = feedScrollRef.current;
-    if (!container || !todayAnchorFixtureId) return;
-    const el = container.querySelector<HTMLElement>(`[data-fixture-id="${todayAnchorFixtureId}"]`);
+    if (!container) return;
+    const el = container.querySelector<HTMLElement>(`[data-fixture-id="${fixtureId}"]`);
     if (!el) return;
-    // Offset up ~44px so the day's matchday header stays visible above the match.
-    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 44;
-    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top
+      + container.scrollTop - feedStickyOffset(container);
+    container.scrollTo({ top: Math.max(0, top), behavior });
+  }
+
+  function scrollFeedToToday() {
+    if (todayAnchorFixtureId) scrollFeedToFixture(todayAnchorFixtureId);
   }
 
   // ── Scorebug hint ──────────────────────────────────────────────────────────
@@ -620,14 +632,12 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     };
   }, [contentTab, selectedFixtureId, selectedFixture?.status]);
 
-  // Scroll the fixture feed to show the selected fixture at the top
+  // Scroll the fixture feed so the selected fixture sits just below the sticky
+  // stage + matchday headers (not hidden behind them).
   useEffect(() => {
-    if (!selectedFixtureId || !feedScrollRef.current) return;
-    const container = feedScrollRef.current;
-    const el = container.querySelector(`[data-fixture-id="${selectedFixtureId}"]`) as HTMLElement | null;
-    if (!el) return;
-    const offset = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
-    container.scrollTo({ top: offset, behavior: 'smooth' });
+    if (!selectedFixtureId) return;
+    scrollFeedToFixture(selectedFixtureId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFixtureId]);
 
   // Auto-scroll the fixture list to today's date once per matchup load (app open

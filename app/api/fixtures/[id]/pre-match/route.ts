@@ -155,6 +155,32 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     awayTeamId ? apiFetch(key, `/fixtures?team=${awayTeamId}&last=5`) : Promise.resolve(null),
   ]);
 
+  /** Goals scored/conceded over a team's recent fixtures (API last_5 is empty for
+   *  national teams, so we compute from the /fixtures?team=&last=5 feed instead). */
+  function last5Stats(fixtures: unknown, teamId: number): { avgFor: number; avgAgainst: number; played: number } {
+    if (!Array.isArray(fixtures)) return { avgFor: 0, avgAgainst: 0, played: 0 };
+    let scored = 0, conceded = 0, n = 0;
+    for (const m of fixtures as Array<{ teams: { home: { id: number } }; goals: { home: number | null; away: number | null } }>) {
+      if (m.goals?.home == null || m.goals?.away == null) continue;
+      const isHome = m.teams.home.id === teamId;
+      scored   += isHome ? m.goals.home : m.goals.away;
+      conceded += isHome ? m.goals.away : m.goals.home;
+      n++;
+    }
+    return { avgFor: n ? scored / n : 0, avgAgainst: n ? conceded / n : 0, played: n };
+  }
+
+  /** Points (3/1/0) over a W/D/L form string — used to weight the form comparison. */
+  function formPoints(form: string): number {
+    return [...form].reduce((p, c) => p + (c === 'W' ? 3 : c === 'D' ? 1 : 0), 0);
+  }
+
+  /** Symmetric share: a / (a + b) as a 0-100 int; 50 when both are zero. */
+  function share(a: number, b: number): number {
+    const t = a + b;
+    return t > 0 ? Math.round((a / t) * 100) : 50;
+  }
+
   /** Build a W/D/L string (oldest → newest) from recent team fixtures */
   function buildForm(fixtures: unknown, teamId: number): string {
     if (!Array.isArray(fixtures)) return '';
@@ -184,9 +210,8 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 
   if (pred?.predictions) {
     const p = pred.predictions;
-    // Prefer cross-competition recent form; fall back to league form if API provides it
-    const homeForm = homeTeamId ? buildForm(homeFixRaw, homeTeamId) : (pred.teams?.home?.league?.form ?? '');
-    const awayForm = awayTeamId ? buildForm(awayFixRaw, awayTeamId) : (pred.teams?.away?.league?.form ?? '');
+    const homeForm = homeTeamId ? buildForm(homeFixRaw, homeTeamId) : '';
+    const awayForm = awayTeamId ? buildForm(awayFixRaw, awayTeamId) : '';
     predictions = {
       homePercent: pct(p.percent?.home),
       drawPercent: pct(p.percent?.draw),
@@ -195,16 +220,23 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       homeForm,
       awayForm,
     };
-    const hg = pred.teams?.home?.last_5?.goals;
-    const ag = pred.teams?.away?.last_5?.goals;
-    if (hg) homeGoals = { avgFor: hg.for?.average ?? '0', avgAgainst: hg.against?.average ?? '0' };
-    if (ag) awayGoals = { avgFor: ag.for?.average ?? '0', avgAgainst: ag.against?.average ?? '0' };
-    const cmp = pred.comparison;
-    if (cmp) {
+
+    // The prediction's own last_5 / comparison come back as 0% for national-team
+    // fixtures, so derive goals + the attack/defense/form comparison from the
+    // (reliable) recent-fixtures feed instead.
+    const hs = homeTeamId ? last5Stats(homeFixRaw, homeTeamId) : { avgFor: 0, avgAgainst: 0, played: 0 };
+    const as = awayTeamId ? last5Stats(awayFixRaw, awayTeamId) : { avgFor: 0, avgAgainst: 0, played: 0 };
+    if (hs.played) homeGoals = { avgFor: hs.avgFor.toFixed(1), avgAgainst: hs.avgAgainst.toFixed(1) };
+    if (as.played) awayGoals = { avgFor: as.avgFor.toFixed(1), avgAgainst: as.avgAgainst.toFixed(1) };
+
+    if (hs.played && as.played) {
+      const formHome = share(formPoints(homeForm), formPoints(awayForm));
+      const attHome  = share(hs.avgFor, as.avgFor);            // more goals scored = stronger attack
+      const defHome  = share(as.avgAgainst, hs.avgAgainst);    // fewer conceded = stronger defense
       comparison = {
-        form: { home: pct(cmp.form?.home), away: pct(cmp.form?.away) },
-        att:  { home: pct(cmp.att?.home),  away: pct(cmp.att?.away)  },
-        def:  { home: pct(cmp.def?.home),  away: pct(cmp.def?.away)  },
+        form: { home: formHome, away: 100 - formHome },
+        att:  { home: attHome,  away: 100 - attHome  },
+        def:  { home: defHome,  away: 100 - defHome  },
       };
     }
   }
@@ -261,8 +293,14 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     });
   }
 
-  // Cache everything EXCEPT standings (standings stays fresh per-request).
+  // Cache everything EXCEPT standings (standings stays fresh per-request). Skip
+  // caching when the recent-fixtures feed failed for a team that has an id —
+  // otherwise a transient miss would freeze empty form/comparison for hours.
+  const last5Failed =
+    (homeTeamId && !Array.isArray(homeFixRaw)) || (awayTeamId && !Array.isArray(awayFixRaw));
   const payload = { predictions, standings: null, homeGoals, awayGoals, injuries, odds, topScorers, comparison };
-  await setCached(id, 'pre_match', payload as unknown as Record<string, unknown>);
+  if (!last5Failed) {
+    await setCached(id, 'pre_match', payload as unknown as Record<string, unknown>);
+  }
   return NextResponse.json({ ok: true, ...base, ...payload, standings } satisfies PreMatchData & { ok: boolean });
 }
