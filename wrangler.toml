@@ -5,6 +5,11 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 preview_urls = false
 
+# Smart Placement routes all traffic to the fewest edge nodes closest to Supabase,
+# dramatically reducing cold starts vs the default global distribution.
+[placement]
+mode = "smart"
+
 [[routes]]
 pattern = "match-duel.com"
 custom_domain = true
@@ -23,7 +28,9 @@ NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BFQjaP_QWa8fWGL-V9JffVfq8Gx4gfXZMCuB38tUVvuQQ2y0
 VAPID_SUBJECT               = "mailto:swimmer571@gmail.com"
 API_FOOTBALL_SEASON         = "2026"
 
-# Cron triggers — fire every 5 minutes to sync live scores + send pick reminders
-# 288 API-Football calls/day (well within the 7,500/day Pro plan limit)
+# Cron triggers — fire every 2 minutes during live matches to sync scores.
+# 720 API-Football calls/day (within the 7,500/day Pro plan limit).
+# Reduced from 5min to stay responsive during 90-min matches while limiting
+# cold-start pressure from cron-triggered Worker invocations.
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/2 * * * *"]

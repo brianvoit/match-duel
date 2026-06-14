@@ -17,7 +17,7 @@ export async function getAuthenticatedUser(): Promise<AppUserRow | null> {
       const service = createServiceRoleClient();
       const { data } = await service
         .from('app_user')
-        .select('id, auth_user_id, email, display_name, created_at')
+        .select('id, auth_user_id, email, display_name, avatar_url, created_at')
         .eq('email', email)
         .maybeSingle() as { data: AppUserRow | null };
       return data;

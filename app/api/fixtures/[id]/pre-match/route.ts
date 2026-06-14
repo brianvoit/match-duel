@@ -27,19 +27,82 @@ function pct(s: string | undefined): number {
   return parseInt((s ?? '0').replace('%', '')) || 0;
 }
 
+/**
+ * Group standings computed from our own fixture results (not the API standings
+ * endpoint). Uses our canonical team names and our synced scores, so it's always
+ * consistent with what's shown elsewhere and updates the moment a match goes
+ * FINAL. Computed fresh on every request (cheap DB query) — never cached — so it
+ * never lags behind results the way the 6h pre_match cache would.
+ */
+async function computeGroupStandings(
+  service: ReturnType<typeof createServiceRoleClient>,
+  fixture: { home_team: string; away_team: string; group_name: string | null; round_id: string }
+): Promise<PreMatchData['standings']> {
+  const groupLetter = fixture.group_name;
+  if (!groupLetter) return null;
+
+  const { data: groupFixtures } = await service
+    .from('fixture')
+    .select('home_team, away_team, home_score, away_score, status')
+    .eq('round_id', fixture.round_id)
+    .eq('group_name', groupLetter) as {
+      data: Array<{ home_team: string; away_team: string; home_score: number | null; away_score: number | null; status: string }> | null;
+    };
+
+  if (!groupFixtures || groupFixtures.length === 0) return null;
+
+  type Tally = { played: number; won: number; drawn: number; lost: number; gf: number; ga: number; points: number };
+  const table = new Map<string, Tally>();
+  const ensure = (t: string): Tally => {
+    let row = table.get(t);
+    if (!row) { row = { played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, points: 0 }; table.set(t, row); }
+    return row;
+  };
+
+  for (const f of groupFixtures) {
+    ensure(f.home_team);
+    ensure(f.away_team);
+    if (f.status === 'FINAL' && f.home_score !== null && f.away_score !== null) {
+      const h = ensure(f.home_team);
+      const a = ensure(f.away_team);
+      h.played++; a.played++;
+      h.gf += f.home_score; h.ga += f.away_score;
+      a.gf += f.away_score; a.ga += f.home_score;
+      if (f.home_score > f.away_score) { h.won++; h.points += 3; a.lost++; }
+      else if (f.home_score < f.away_score) { a.won++; a.points += 3; h.lost++; }
+      else { h.drawn++; a.drawn++; h.points++; a.points++; }
+    }
+  }
+
+  const rows: GroupStandingRow[] = [...table.entries()].map(([name, s]) => ({
+    teamName: name,
+    played: s.played, won: s.won, drawn: s.drawn, lost: s.lost,
+    goalsFor: s.gf, goalsAgainst: s.ga, goalDiff: s.gf - s.ga, points: s.points,
+    isHome: name === fixture.home_team,
+    isAway: name === fixture.away_team,
+  }));
+
+  rows.sort((a, b) =>
+    b.points - a.points || b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor || a.teamName.localeCompare(b.teamName)
+  );
+
+  return { group: `Group ${groupLetter}`, rows };
+}
+
 export async function GET(_req: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const service = createServiceRoleClient();
 
   const { data: fixture } = await service
     .from('fixture')
-    .select('external_provider_id, home_team, away_team, group_name, round_id')
+    .select('external_provider_id, home_team, away_team, group_name, round_id, starts_at, status')
     .eq('id', id)
     .maybeSingle() as {
       data: {
         external_provider_id: string | null;
         home_team: string; away_team: string;
         group_name: string | null; round_id: string;
+        starts_at: string | null; status: string;
       } | null;
     };
 
@@ -59,18 +122,25 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   if (!key || !extId) return NextResponse.json({ ok: true, ...base });
 
   // ── Check cache ───────────────────────────────────────────────────────────
-  // Pre-match data: cache for 6 hours; skip cache if fixture is FINAL
-  const fixtureStatus = (await (async () => {
-    const { data } = await (createServiceRoleClient()).from('fixture').select('status').eq('id', id).maybeSingle() as { data: { status: string } | null };
-    return data?.status ?? 'SCHEDULED';
-  })());
-  const cachedPre = await getCached(id, 'pre_match', fixtureStatus as never);
-  if (cachedPre) return NextResponse.json({ ok: true, ...base, ...cachedPre });
+  const fixtureStatus = fixture.status ?? 'SCHEDULED';
+
+  // Pre-match context (odds/injuries) moves as kickoff nears, so tighten the cache
+  // to 30 min once a match is within 3 hours of kickoff; stays 6h otherwise.
+  const msToKickoff = fixture.starts_at ? new Date(fixture.starts_at).getTime() - Date.now() : Infinity;
+  const preMatchTtl = (fixtureStatus === 'SCHEDULED' && msToKickoff > 0 && msToKickoff < 3 * 60 * 60 * 1000)
+    ? 30 * 60 * 1000
+    : undefined;
+
+  // Standings are computed from our own results on every request (never cached),
+  // so they reflect the latest scores even when the rest of pre-match is cached.
+  const standings = await computeGroupStandings(service, fixture);
+
+  const cachedPre = await getCached(id, 'pre_match', fixtureStatus as never, preMatchTtl);
+  if (cachedPre) return NextResponse.json({ ok: true, ...base, ...cachedPre, standings });
 
   // Fire all API calls in parallel
-  const [predRaw, standRaw, injRaw, oddsRaw, scorersRaw] = await Promise.all([
+  const [predRaw, injRaw, oddsRaw, scorersRaw] = await Promise.all([
     apiFetch(key, `/predictions?fixture=${extId}`),
-    apiFetch(key, `/standings?league=1&season=${season}`),
     apiFetch(key, `/injuries?fixture=${extId}`),
     apiFetch(key, `/odds?fixture=${extId}&bookmaker=6`), // Bet365
     apiFetch(key, `/players/topscorers?league=1&season=${season}`),
@@ -140,68 +210,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   }
 
   // ── Standings ──────────────────────────────────────────────────────────────
-  let standings: PreMatchData['standings'] = null;
-  const groupLetter = fixture.group_name; // "A", "B", etc.
-
-  if (groupLetter) {
-    // Try to find live standings from the API first
-    let liveRows: GroupStandingRow[] | null = null;
-    if (standRaw) {
-      const allGroups: Array<{ group: string; all: unknown[] }> = Array.isArray(standRaw)
-        ? standRaw.flat()
-        : [];
-      const targetGroup = allGroups.find(g =>
-        g.group === `Group ${groupLetter}` || g.group === groupLetter
-      );
-      if (targetGroup) {
-        liveRows = (targetGroup.all as Array<{
-          team: { name: string };
-          all: { played: number; win: number; draw: number; lose: number };
-          goals: { for: number; against: number };
-          goalsDiff: number; points: number;
-        }>).map(r => ({
-          teamName: r.team.name,
-          played: r.all.played, won: r.all.win, drawn: r.all.draw, lost: r.all.lose,
-          goalsFor: r.goals.for, goalsAgainst: r.goals.against,
-          goalDiff: r.goalsDiff, points: r.points,
-          isHome: r.team.name === fixture.home_team,
-          isAway: r.team.name === fixture.away_team,
-        }));
-      }
-    }
-
-    if (liveRows && liveRows.length > 0) {
-      // Sort: points desc → goal diff desc → alphabetical (so all-zero sorts A-Z)
-      liveRows.sort((a, b) =>
-        b.points - a.points || b.goalDiff - a.goalDiff || a.teamName.localeCompare(b.teamName)
-      );
-      standings = { group: `Group ${groupLetter}`, rows: liveRows };
-    } else {
-      // Build a zero-filled placeholder from our own DB (all teams in this group)
-      const { data: groupFixtures } = await service
-        .from('fixture')
-        .select('home_team, away_team')
-        .eq('round_id', fixture.round_id)
-        .eq('group_name', groupLetter);
-
-      const teamSet = new Set<string>();
-      for (const f of (groupFixtures ?? [])) {
-        teamSet.add(f.home_team);
-        teamSet.add(f.away_team);
-      }
-      const placeholderRows: GroupStandingRow[] = [...teamSet]
-        .sort()
-        .map(name => ({
-          teamName: name, played: 0, won: 0, drawn: 0, lost: 0,
-          goalsFor: 0, goalsAgainst: 0, goalDiff: 0, points: 0,
-          isHome: name === fixture.home_team,
-          isAway: name === fixture.away_team,
-        }));
-      if (placeholderRows.length > 0) {
-        standings = { group: `Group ${groupLetter}`, rows: placeholderRows };
-      }
-    }
-  }
+  // (computed above via computeGroupStandings — from our own results, always fresh)
 
   // ── Injuries ───────────────────────────────────────────────────────────────
   let injuries: PreMatchData['injuries'] = null;
@@ -252,7 +261,8 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     });
   }
 
-  const payload = { predictions, standings, homeGoals, awayGoals, injuries, odds, topScorers, comparison };
+  // Cache everything EXCEPT standings (standings stays fresh per-request).
+  const payload = { predictions, standings: null, homeGoals, awayGoals, injuries, odds, topScorers, comparison };
   await setCached(id, 'pre_match', payload as unknown as Record<string, unknown>);
-  return NextResponse.json({ ok: true, ...base, ...payload } satisfies PreMatchData & { ok: boolean });
+  return NextResponse.json({ ok: true, ...base, ...payload, standings } satisfies PreMatchData & { ok: boolean });
 }

@@ -1,3 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <text y=".9em" font-size="90">⚽</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="115" fill="#1266d6"/>
+  <!-- Football (soccer ball) -->
+  <circle cx="256" cy="248" r="148" fill="white"/>
+  <!-- Central pentagon -->
+  <polygon points="256,144 298,174 282,220 230,220 214,174" fill="#0d1a2f"/>
+  <!-- Hex segments (strokes only) -->
+  <polyline points="256,144 214,174 182,148 190,100 234,88" fill="none" stroke="#0d1a2f" stroke-width="8" stroke-linejoin="round"/>
+  <polyline points="256,144 298,174 330,148 322,100 278,88" fill="none" stroke="#0d1a2f" stroke-width="8" stroke-linejoin="round"/>
+  <polyline points="298,174 282,220 318,246 360,228 362,180" fill="none" stroke="#0d1a2f" stroke-width="8" stroke-linejoin="round"/>
+  <polyline points="214,174 230,220 194,246 152,228 150,180" fill="none" stroke="#0d1a2f" stroke-width="8" stroke-linejoin="round"/>
+  <polyline points="282,220 318,246 306,294 256,310 206,294 194,246 230,220" fill="none" stroke="#0d1a2f" stroke-width="8" stroke-linejoin="round"/>
+  <!-- Outer circle border -->
+  <circle cx="256" cy="248" r="148" fill="none" stroke="#0d1a2f" stroke-width="8" opacity="0.15"/>
+  <!-- App badge -->
+  <text x="256" y="382" font-family="'Helvetica Neue',Arial,sans-serif" font-size="58" font-weight="800" fill="white" text-anchor="middle" letter-spacing="1">
+    MD
+  </text>
 </svg>

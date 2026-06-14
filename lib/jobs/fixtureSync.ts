@@ -27,6 +27,8 @@ function toDbFixtureRow(fixture: ProviderFixture) {
     away_team: fixture.awayTeam,
     home_score: fixture.homeScore ?? null,
     away_score: fixture.awayScore ?? null,
+    home_pen_score: fixture.homePenScore ?? null,
+    away_pen_score: fixture.awayPenScore ?? null,
     status: fixture.status,
     matchday: fixture.matchday ?? null,
     group_name: fixture.groupName ?? null,
@@ -115,7 +117,13 @@ export async function runFixtureSync(payload: FixtureSyncPayload): Promise<SyncR
         const providerId = fixture.externalProviderId as string;
 
         if (existingByProviderId.has(providerId)) {
-          const { error } = await service.from('fixture').update(dbRow).eq('external_provider_id', providerId);
+          // Preserve curated fields on existing rows. Team names: the DB uses official
+          // FIFA names (e.g. "Czechia", "Côte d'Ivoire") while API-Football sends its own
+          // variants — overwriting churns display and breaks flag lookups. group_name:
+          // API-Football's fixtures feed doesn't include it (mapper always sends null),
+          // so it must never clobber the seeded group letters. Only sync volatile fields.
+          const { home_team: _h, away_team: _a, group_name: _g, ...updateRow } = dbRow;
+          const { error } = await service.from('fixture').update(updateRow).eq('external_provider_id', providerId);
           if (error) throw new Error(`Failed provider-id fixture update: ${error.message}`);
 
           // Detect FINAL transition

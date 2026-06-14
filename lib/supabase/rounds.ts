@@ -162,7 +162,7 @@ export async function getRoundFixtures(input: { roundId: string }) {
 
   const { data: fixtures, error: fixtureError } = await service
     .from('fixture')
-    .select('id, starts_at, home_team, away_team, home_score, away_score, status, group_name, venue, city, matchday')
+    .select('id, starts_at, home_team, away_team, home_score, away_score, home_pen_score, away_pen_score, status, group_name, venue, city, matchday')
     .eq('round_id', input.roundId)
     .order('starts_at', { ascending: true }) as {
     data: FixtureRow[] | null;
@@ -185,6 +185,8 @@ export async function getRoundFixtures(input: { roundId: string }) {
         awayTeam: fixture.away_team,
         homeScore: fixture.home_score,
         awayScore: fixture.away_score,
+        homePenScore: raw.home_pen_score as number | null ?? null,
+        awayPenScore: raw.away_pen_score as number | null ?? null,
         status: fixture.status,
         isLocked: isPickLocked(fixture.starts_at, now),
         myPickSide: null,
@@ -228,7 +230,7 @@ export async function getRoundFixturesForUser(input: {
 
   const { data: fixtures, error: fixtureError } = await service
     .from('fixture')
-    .select('id, starts_at, home_team, away_team, home_score, away_score, status, group_name, venue, city, matchday')
+    .select('id, starts_at, home_team, away_team, home_score, away_score, home_pen_score, away_pen_score, status, group_name, venue, city, matchday')
     .eq('round_id', input.roundId)
     .order('starts_at', { ascending: true }) as {
     data: FixtureRow[] | null;
@@ -302,6 +304,8 @@ export async function getRoundFixturesForUser(input: {
         awayTeam: fixture.away_team,
         homeScore: fixture.home_score,
         awayScore: fixture.away_score,
+        homePenScore: (fixture as unknown as Record<string, unknown>).home_pen_score as number | null ?? null,
+        awayPenScore: (fixture as unknown as Record<string, unknown>).away_pen_score as number | null ?? null,
         status: fixture.status,
         isLocked: locked,
         myPickSide: existingPick?.side ?? null,

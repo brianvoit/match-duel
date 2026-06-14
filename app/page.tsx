@@ -1,23 +1,12 @@
-import { redirect } from 'next/navigation';
 import { BetaGate } from '@/app/components/beta-gate';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+
+export const dynamic = 'force-dynamic';
 
 interface PageProps {
   searchParams: Promise<{ error?: string }>;
 }
 
 export default async function HomePage({ searchParams }: PageProps) {
-  if (process.env.BYPASS_AUTH === 'true') {
-    redirect('/play');
-  }
-
-  const supabase = await createServerSupabaseClient();
-  const { data } = await supabase.auth.getUser();
-
-  if (data.user) {
-    redirect('/play');
-  }
-
   const { error } = await searchParams;
   const noAccess = error === 'no_access';
 

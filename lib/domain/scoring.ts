@@ -25,6 +25,14 @@ export function evaluatePick(input: PickEvaluationInput): number {
   }
 
   if (fixture.homeGoals === fixture.awayGoals) {
+    // Level after regulation/extra time. In knockouts a penalty shootout decides
+    // who advances — score by the shootout winner rather than awarding the draw point.
+    const hp = fixture.homePenalty;
+    const ap = fixture.awayPenalty;
+    if (hp != null && ap != null && hp !== ap) {
+      const penWinner = hp > ap ? 'HOME' : 'AWAY';
+      return penWinner === pickedTeamSide ? stagePointsFor(stage, scoringConfig) : 0;
+    }
     return scoringConfig.drawPoint ?? 0;
   }
 

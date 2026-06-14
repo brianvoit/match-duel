@@ -102,11 +102,16 @@ export async function GET(
       const h2hRaw = await apiFetch(apiKey, `/fixtures/headtohead?h2h=${homeTeamId}-${awayTeamId}`);
 
       if (Array.isArray(h2hRaw)) {
-        // Filter out friendlies; skip fixtures with no result yet (null goals)
+        // Only finished, competitive past meetings. Exclude the current fixture
+        // itself (the H2H feed includes it, so once it kicks off it would otherwise
+        // appear here) and any meeting that isn't actually over yet.
+        const FINISHED = new Set(['FT', 'AET', 'PEN', 'AWD', 'WO']);
         const competitive = h2hRaw.filter((m) => {
           const name: string = m.league?.name ?? '';
+          const status: string = m.fixture?.status?.short ?? '';
           return (
-            !name.toLowerCase().includes('friendly') &&
+            String(m.fixture?.id) !== String(extId) &&
+            FINISHED.has(status) &&
             !name.toLowerCase().includes('friendl') &&
             m.goals?.home !== null &&
             m.goals?.away !== null

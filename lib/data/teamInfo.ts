@@ -55,6 +55,7 @@ export const TEAM_INFO: Record<string, { flag: string; code: string }> = {
   'Norway':                   { flag: '🇳🇴', code: 'NOR' },
   'Greece':                   { flag: '🇬🇷', code: 'GRE' },
   'Bosnia and Herzegovina':   { flag: '🇧🇦', code: 'BIH' },
+  'Bosnia & Herzegovina':     { flag: '🇧🇦', code: 'BIH' },  // API-Football alias
   'Georgia':                  { flag: '🇬🇪', code: 'GEO' },
   'Iceland':                  { flag: '🇮🇸', code: 'ISL' },
   'Finland':                  { flag: '🇫🇮', code: 'FIN' },
@@ -75,6 +76,7 @@ export const TEAM_INFO: Record<string, { flag: string; code: string }> = {
   'Congo DR':                 { flag: '🇨🇩', code: 'COD' },
   'DR Congo':                 { flag: '🇨🇩', code: 'COD' },
   'Cape Verde':               { flag: '🇨🇻', code: 'CPV' },
+  'Cape Verde Islands':       { flag: '🇨🇻', code: 'CPV' },  // API-Football alias
   'Cabo Verde':               { flag: '🇨🇻', code: 'CPV' },  // FIFA official name
   // ── Asia ────────────────────────────────────────────────────────────────────
   'Japan':                    { flag: '🇯🇵', code: 'JPN' },

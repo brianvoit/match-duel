@@ -18,6 +18,9 @@ export interface FixtureResult {
   homeGoals: number;
   awayGoals: number;
   status: FixtureStatus;
+  // Penalty shootout result (knockout matches level after extra time); null otherwise.
+  homePenalty?: number | null;
+  awayPenalty?: number | null;
 }
 
 export interface PickEvaluationInput {

@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
 [triggers]
-crons = ["*/30 * * * *"]
+crons = ["* * * * *"]
 
 [vars]
 SUPABASE_FUNCTIONS_URL = "https://fqievqqzxrgvqrgknvas.supabase.co/functions/v1"

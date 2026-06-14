@@ -8,6 +8,8 @@ export const providerFixtureSchema = z.object({
   awayTeam: z.string().min(1),
   homeScore: z.number().int().nullable().optional(),
   awayScore: z.number().int().nullable().optional(),
+  homePenScore: z.number().int().nullable().optional(),
+  awayPenScore: z.number().int().nullable().optional(),
   status: z.enum(['SCHEDULED', 'LIVE', 'FINAL', 'POSTPONED', 'CANCELED']),
   matchday: z.number().int().positive().nullable().optional(),
   groupName: z.string().nullable().optional(),

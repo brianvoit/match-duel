@@ -63,8 +63,10 @@ export async function PATCH(request: NextRequest) {
     }
     const service = createServiceRoleClient();
 
+    const toTitleCase = (s: string) => s.toLowerCase().replace(/(?:^|\s)\S/g, (c) => c.toUpperCase());
+
     const updates: Record<string, unknown> = {};
-    if (parsed.data.displayName !== undefined)             updates.display_name = parsed.data.displayName;
+    if (parsed.data.displayName !== undefined)             updates.display_name = toTitleCase(parsed.data.displayName);
     if (parsed.data.defaultPickSide !== undefined)         updates.default_pick_side = parsed.data.defaultPickSide;
     if (parsed.data.notificationPreferences !== undefined) updates.notification_preferences = parsed.data.notificationPreferences;
 

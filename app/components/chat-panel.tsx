@@ -115,9 +115,10 @@ export function ChatPanel({
     };
   }, [matchupId, myAppUserId, loadMessages, markRead]);
 
-  // Polling fallback — catches opponent messages if realtime lags or drops
+  // Polling fallback — catches messages if realtime drops. Supabase Realtime
+  // handles all normal delivery; this only fires every 2 minutes as a safety net.
   useEffect(() => {
-    const interval = setInterval(() => { loadMessages(); }, 8000);
+    const interval = setInterval(() => { loadMessages(); }, 120_000);
     return () => clearInterval(interval);
   }, [loadMessages]);
 

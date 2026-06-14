@@ -98,20 +98,67 @@ export async function runRoundTransitions(input?: {
   };
 }
 
+/**
+ * Materialise default picks for any fixture that has already locked (kickoff
+ * passed) in an incomplete round, so auto-picks become real `pick` rows as soon
+ * as a match starts — not weeks later at round settlement. This keeps the live
+ * scorebug and fixture list accurate for players who rely on their default side.
+ *
+ * Idempotent: skips fixtures the first picker already picked. Safe to run often.
+ */
+export async function runLockedPickDefaults(input?: {
+  tournamentId?: string;
+}): Promise<{ processedRounds: number }> {
+  const service = createServiceRoleClient();
+
+  let roundQuery = service
+    .from('round')
+    .select('id')
+    .eq('is_complete', false);
+
+  if (input?.tournamentId) {
+    roundQuery = roundQuery.eq('tournament_id', input.tournamentId);
+  }
+
+  const { data: rounds, error } = await roundQuery as {
+    data: Array<{ id: string }> | null;
+    error: { message: string } | null;
+  };
+
+  if (error) throw new Error(`Failed to list incomplete rounds: ${error.message}`);
+
+  for (const round of rounds ?? []) {
+    await applyMissedPickDefaults(service, round.id, { lockedOnly: true });
+  }
+
+  return { processedRounds: (rounds ?? []).length };
+}
+
 // For any fixture where the first picker never submitted, materialise their default
 // pick and auto-assign the opponent the opposite side before settlement runs.
 async function applyMissedPickDefaults(
   service: ReturnType<typeof createServiceRoleClient>,
-  roundId: string
+  roundId: string,
+  opts: { lockedOnly?: boolean } = {}
 ) {
   // Load all fixtures in the round
   const { data: fixtures } = await service
     .from('fixture')
-    .select('id, round_id')
-    .eq('round_id', roundId) as { data: Array<{ id: string; round_id: string }> | null };
+    .select('id, round_id, starts_at')
+    .eq('round_id', roundId) as { data: Array<{ id: string; round_id: string; starts_at: string | null }> | null };
 
   if (!fixtures || fixtures.length === 0) return;
-  const fixtureIds = fixtures.map((f) => f.id);
+
+  // When lockedOnly, restrict to fixtures whose pick window has closed (kickoff
+  // passed) — so we never materialise a default for a match that can still be
+  // picked. Settlement runs without this filter (the round is already over).
+  const nowMs = Date.now();
+  const eligible = opts.lockedOnly
+    ? fixtures.filter((f) => f.starts_at !== null && new Date(f.starts_at).getTime() <= nowMs)
+    : fixtures;
+
+  if (eligible.length === 0) return;
+  const fixtureIds = eligible.map((f) => f.id);
 
   // Load all pick_order_assignments for these fixtures
   const { data: assignments } = await service

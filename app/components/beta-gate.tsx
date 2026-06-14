@@ -6,13 +6,12 @@ import type { Provider } from '@supabase/supabase-js';
 
 export function BetaGate() {
   const [code, setCode] = useState('');
-  const [error, setError] = useState('');
+  const [shaking, setShaking] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
     setLoading(true);
 
     const res = await fetch('/api/auth/beta', {
@@ -26,8 +25,8 @@ export function BetaGate() {
     if (res.ok) {
       setUnlocked(true);
     } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? 'Invalid code. Try again.');
+      setShaking(true);
+      setTimeout(() => setShaking(false), 600);
     }
   }
 
@@ -40,7 +39,7 @@ export function BetaGate() {
       <p className="wc-beta-gate-label">Enter your beta access code to continue</p>
       <div className="wc-beta-gate-row">
         <input
-          className="wc-beta-gate-input"
+          className={`wc-beta-gate-input${shaking ? ' wc-beta-gate-input--invalid' : ''}`}
           type="text"
           placeholder="Access code"
           value={code}
@@ -58,7 +57,6 @@ export function BetaGate() {
           {loading ? 'Checking…' : 'Continue'}
         </button>
       </div>
-      {error && <p className="wc-beta-gate-error">{error}</p>}
     </form>
   );
 }

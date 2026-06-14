@@ -32,6 +32,9 @@ interface ApiFixture {
   league: { round: string; season: number };
   teams: { home: { name: string }; away: { name: string } };
   goals: { home: number | null; away: number | null };
+  // `goals` holds the score after regulation + extra time. For knockout matches
+  // decided on penalties, the shootout result lives in score.penalty.
+  score?: { penalty?: { home: number | null; away: number | null } };
 }
 
 // ── Mapping helpers ───────────────────────────────────────────────────────────
@@ -99,13 +102,17 @@ function apiRoundToMatchday(round: string): number | null {
 export async function fetchApiFootballFixtures(
   leagueId: number,
   season: number,
-  options: { liveOnly?: boolean; date?: string } = {}
+  options: { liveOnly?: boolean; date?: string; ids?: string } = {}
 ): Promise<ApiFixture[]> {
   const key = serverEnv.API_FOOTBALL_KEY;
   if (!key) throw new Error('API_FOOTBALL_KEY is not configured.');
 
   let url: string;
-  if (options.liveOnly) {
+  if (options.ids) {
+    // Specific fixtures by id (hyphen-separated, max 20) — used to settle matches
+    // still marked LIVE in our DB that the live/date feeds no longer return.
+    url = `${BASE_URL}/fixtures?ids=${options.ids}&timezone=UTC`;
+  } else if (options.liveOnly) {
     // Only in-progress matches (1H, HT, 2H, ET, BT, P) — very cheap
     url = `${BASE_URL}/fixtures?live=all&league=${leagueId}&timezone=UTC`;
   } else if (options.date) {
@@ -172,6 +179,8 @@ export async function mapToProviderFixtures(
       awayTeam:  f.teams.away.name,
       homeScore: f.goals.home  ?? null,
       awayScore: f.goals.away  ?? null,
+      homePenScore: f.score?.penalty?.home ?? null,
+      awayPenScore: f.score?.penalty?.away ?? null,
       status:    mapStatus(f.fixture.status.short),
       matchday:  apiRoundToMatchday(f.league.round),
       groupName: null,  // available via /standings if needed later

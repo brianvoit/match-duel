@@ -15,6 +15,8 @@ interface FixtureRow {
   id: string;
   home_score: number | null;
   away_score: number | null;
+  home_pen_score: number | null;
+  away_pen_score: number | null;
   status: string;
 }
 
@@ -65,7 +67,7 @@ export async function runRoundSettlement(input: {
 
   const { data: fixtures, error: fixtureError } = await service
     .from('fixture')
-    .select('id, home_score, away_score, status')
+    .select('id, home_score, away_score, home_pen_score, away_pen_score, status')
     .eq('round_id', input.roundId)
     .eq('status', 'FINAL');
 
@@ -138,6 +140,8 @@ export async function runRoundSettlement(input: {
           fixture: {
             homeGoals: fixture.home_score ?? 0,
             awayGoals: fixture.away_score ?? 0,
+            homePenalty: fixture.home_pen_score,
+            awayPenalty: fixture.away_pen_score,
             status: 'FINAL'
           },
           pickedTeamSide: pick.side,

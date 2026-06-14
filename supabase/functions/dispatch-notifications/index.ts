@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
     for (const event of pending) {
       // Enrich URL for actionable notifications so tapping opens the right view
       if (event.event_type === 'PICKS_DUE_SOON' && event.payload?.url === '/play') {
-        event.payload.url = '/play?filter=pick-now';
+        event.payload.url = '/play?filter=hide-my-picks';
       }
 
       const { data: subs } = await db

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchApiFootballFixtures, mapToProviderFixtures, WC_LEAGUE_ID } from '@/lib/jobs/apiFootballClient';
 import { runFixtureSync } from '@/lib/jobs/fixtureSync';
-import { runRoundTransitions } from '@/lib/jobs/roundTransitions';
+import { runRoundTransitions, runLockedPickDefaults } from '@/lib/jobs/roundTransitions';
+import { invalidateCache } from '@/lib/jobs/fixtureApiCache';
 import { notifyMatchFinished } from '@/lib/jobs/notifyMatchFinished';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
@@ -46,24 +47,52 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Fetch from API-Football
-    // Smart strategy: first try live-only (cheap, 1 call). If there are live
-    // matches, that's all we need. If not, fall back to today's fixtures so
-    // we pick up results from matches that finished in the last few minutes.
-    // Full-season fetch is only used for the initial import / admin triggers.
     const searchParams = new URL(req.url).searchParams;
     const forceFullSync = searchParams.get('full') === '1';
 
-    let apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season, { liveOnly: !forceFullSync });
+    const mergeById = (...lists: Awaited<ReturnType<typeof fetchApiFootballFixtures>>[]) => {
+      const byId = new Map<number, (typeof lists)[number][number]>();
+      for (const list of lists) for (const f of list) byId.set(f.fixture.id, f);
+      return [...byId.values()];
+    };
 
-    if (!apiFixtures.length && !forceFullSync) {
-      // No live matches — fetch today's date to catch recently finished games
-      const today = new Date().toISOString().split('T')[0];
-      apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season, { date: today });
-    }
+    let apiFixtures: Awaited<ReturnType<typeof fetchApiFootballFixtures>>;
 
-    // If still nothing (off-season / no matches today), do a full sync
-    if (!apiFixtures.length && !forceFullSync) {
+    if (forceFullSync) {
       apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season);
+    } else {
+      // Always fetch today's fixtures (live + finished) AND any currently-live
+      // matches — fetched together, not gated on one another. Previously today's
+      // results were skipped whenever any match was live, which left finished
+      // matches stuck on "LIVE" for hours during back-to-back games.
+      const today = new Date().toISOString().split('T')[0];
+      const [todayRaw, liveRaw] = await Promise.all([
+        fetchApiFootballFixtures(WC_LEAGUE_ID, season, { date: today }),
+        fetchApiFootballFixtures(WC_LEAGUE_ID, season, { liveOnly: true }),
+      ]);
+      apiFixtures = mergeById(todayRaw, liveRaw);
+
+      // Safety net: settle any fixture still marked LIVE in our DB that the feeds
+      // above didn't return (e.g. it ended on a previous UTC day and the FINAL
+      // transition was missed) by fetching its current state directly by id.
+      const covered = new Set(apiFixtures.map((f) => String(f.fixture.id)));
+      const { data: stuckLive } = await service
+        .from('fixture')
+        .select('external_provider_id')
+        .eq('status', 'LIVE')
+        .not('external_provider_id', 'is', null) as { data: Array<{ external_provider_id: string | null }> | null };
+      const stuckIds = (stuckLive ?? [])
+        .map((r) => r.external_provider_id)
+        .filter((id): id is string => Boolean(id) && !covered.has(id as string));
+      for (let i = 0; i < stuckIds.length; i += 20) {
+        const batch = await fetchApiFootballFixtures(WC_LEAGUE_ID, season, { ids: stuckIds.slice(i, i + 20).join('-') });
+        apiFixtures = mergeById(apiFixtures, batch);
+      }
+
+      // Off-season / nothing today and nothing live → fall back to a full sync.
+      if (!apiFixtures.length) {
+        apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season);
+      }
     }
 
     if (!apiFixtures.length) {
@@ -94,7 +123,18 @@ export async function POST(req: NextRequest) {
     // 4. Fire per-match notifications for newly-final fixtures (respects user prefs)
     notifyMatchFinished(syncResult.newlyFinal).catch(() => {});
 
-    // 5. Settle any rounds that are now complete
+    // 4b. Drop LIVE-era stats/events snapshots for matches that just went FINAL,
+    //     so the post-match recap fetches the complete final data (incl. stoppage
+    //     time goals/cards) instead of a frozen pre-whistle snapshot.
+    if (syncResult.newlyFinal.length > 0) {
+      await invalidateCache(syncResult.newlyFinal.map((f) => f.id), ['stats', 'events']);
+    }
+
+    // 5. Materialise default picks for matches that have now locked, so auto-picks
+    //    count toward the live scorebug immediately (not just at round settlement).
+    const lockedDefaults = await runLockedPickDefaults({ tournamentId: tournament.id });
+
+    // 6. Settle any rounds that are now complete
     const transitions = await runRoundTransitions({ tournamentId: tournament.id });
 
     return NextResponse.json({
@@ -103,6 +143,7 @@ export async function POST(req: NextRequest) {
       tournament: { id: tournament.id, year: tournament.year },
       api: { total: apiFixtures.length, mapped: fixtures.length, skipped },
       sync: syncResult,
+      lockedDefaults,
       transitions,
     });
   } catch (err) {

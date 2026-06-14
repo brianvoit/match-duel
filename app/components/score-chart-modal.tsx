@@ -7,7 +7,7 @@ import {
   ParticipantStanding,
   RoundResultEntry,
 } from '@/app/components/playground-types';
-import { STAGE_POINTS, fmtStage, initials, computePickPoints } from '@/app/components/playground-utils';
+import { STAGE_POINTS, fmtStage, initials, computePickPoints, tournamentMatchday } from '@/app/components/playground-utils';
 import { avatarColor } from '@/lib/avatar-color';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -19,6 +19,7 @@ interface ScoreChartModalProps {
   fixtures: Fixture[];
   completedRoundFixtures: Record<string, Fixture[]>;
   pickMap: Record<string, 'HOME' | 'AWAY'>;
+  provisionalPoints: { mine: number; opp: number };
   myParticipantId: string | null;
   currentRound: Round | null;
   selectedMatchup: Matchup;
@@ -73,14 +74,16 @@ function buildChart(
 
 export function ScoreChartModal({
   standing, roundResults, allRounds, fixtures, completedRoundFixtures, pickMap,
-  myParticipantId, currentRound, selectedMatchup,
+  provisionalPoints, myParticipantId, currentRound, selectedMatchup,
   userAvatarUrl, oppAvatarUrl, userEmail, displayName,
   onClose,
 }: ScoreChartModalProps) {
   const me  = standing.find(s => s.participantId === myParticipantId);
   const opp = standing.find(s => s.participantId !== myParticipantId);
-  const myPts  = me?.tournamentPoints  ?? 0;
-  const oppPts = opp?.tournamentPoints ?? 0;
+  // Settled tournament points + live provisional from the current round's finals,
+  // matching the header H2H scorebug.
+  const myPts  = (me?.tournamentPoints  ?? 0) + provisionalPoints.mine;
+  const oppPts = (opp?.tournamentPoints ?? 0) + provisionalPoints.opp;
   const myName  = displayName || userEmail.split('@')[0];
   const oppName = selectedMatchup.opponentDisplayName ?? selectedMatchup.opponentEmail?.split('@')[0] ?? 'Opponent';
   const myInit  = initials(myName);
@@ -120,9 +123,11 @@ export function ScoreChartModal({
     ? (completedRoundFixtures[groupRound.id] ?? fixtures)
     : fixtures;
 
+  // Group by tournament playing-day (matches the fixture list's MD numbering),
+  // not the API's per-group matchday (1-3).
   const mdGroups = new Map<number, Fixture[]>();
   for (const f of groupFixtures) {
-    const md = f.matchday ?? 1;
+    const md = tournamentMatchday(f.startsAt);
     if (!mdGroups.has(md)) mdGroups.set(md, []);
     mdGroups.get(md)!.push(f);
   }

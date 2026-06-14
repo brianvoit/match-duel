@@ -34,6 +34,8 @@ export type Fixture = {
   awayTeam: string;
   homeScore: number | null;
   awayScore: number | null;
+  homePenScore: number | null;
+  awayPenScore: number | null;
   status: string;
   isLocked: boolean;
   myPickSide: 'HOME' | 'AWAY' | null;
@@ -205,3 +207,10 @@ export type ContentTab = 'details' | 'squad' | 'recap';
 export type DrawerTab = 'chat' | 'calendar';
 export type MobileView = 'home' | 'feed' | 'content' | 'chat' | 'profile';
 export type NoticeTone = 'ok' | 'error' | 'info';
+
+// GA4 gtag global — only present in production builds
+declare global {
+  interface Window {
+    gtag?: (...args: unknown[]) => void;
+  }
+}

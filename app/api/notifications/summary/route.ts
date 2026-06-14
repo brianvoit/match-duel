@@ -164,14 +164,14 @@ export async function GET() {
   // 7. Get existing picks by this user across all relevant fixtures
   const { data: existingPickRows } = await service
     .from('pick')
-    .select('fixture_id, participant_id, pick_side')
+    .select('fixture_id, participant_id, side')
     .in('fixture_id', allFixtureIds)
     .in('participant_id', userParticipantIds);
 
   // Set of "fixture_id:participant_id" combos that have picks
   const pickedKeys = new Set<string>(
     (existingPickRows ?? [])
-      .filter((p) => p.pick_side !== null)
+      .filter((p) => p.side !== null)
       .map((p) => `${p.fixture_id}:${p.participant_id}`)
   );
 

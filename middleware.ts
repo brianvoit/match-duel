@@ -10,6 +10,18 @@ import { createServerClient } from '@supabase/ssr';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Admin API routes are token-gated inside the route handlers themselves —
+  // skip the Supabase session check entirely so the cron worker doesn't burn
+  // CPU on an unnecessary auth round-trip every 5 minutes.
+  if (pathname.startsWith('/api/admin/')) {
+    return NextResponse.next({ request });
+  }
+
+  // Health probe used by the post-deploy pre-warm script — no auth needed.
+  if (pathname === '/api/health') {
+    return NextResponse.next({ request });
+  }
+
   // Build a response we can attach refreshed cookies to
   let response = NextResponse.next({ request });
 
@@ -39,7 +51,13 @@ export async function middleware(request: NextRequest) {
 
   // Dev bypass — skip all auth checks on localhost when BYPASS_AUTH=true
   if (process.env.BYPASS_AUTH === 'true') {
+    if (pathname === '/') return NextResponse.redirect(new URL('/play', request.url));
     return response;
+  }
+
+  // / → /play if already authenticated (don't serve landing page to logged-in users)
+  if (pathname === '/' && user) {
+    return NextResponse.redirect(new URL('/play', request.url));
   }
 
   // /play requires a session — redirect to landing page if not authenticated
@@ -70,6 +88,6 @@ export const config = {
      * - favicon.ico
      * - The root landing page itself (/) — unauthenticated users need to see it
      */
-    '/((?!_next/static|_next/image|favicon.ico|$).*)'
+    '/((?!_next/static|_next/image|favicon.ico).*)'
   ]
 };

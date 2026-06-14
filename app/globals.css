@@ -28,7 +28,7 @@
   --feed-w: 360px;
   --drawer-icons-w: 44px;
   --drawer-w: 300px; /* icons(44) + panel(256) */
-  --mobile-nav-h: 56px;
+  --mobile-nav-h: 68px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -618,10 +618,20 @@ select {
   border-color: var(--accent);
 }
 
-.wc-beta-gate-error {
-  font-size: 0.85rem;
-  color: var(--danger);
-  margin: 0;
+@keyframes wc-shake {
+  0%   { transform: translateX(0); }
+  15%  { transform: translateX(-6px); }
+  30%  { transform: translateX(6px); }
+  45%  { transform: translateX(-5px); }
+  60%  { transform: translateX(5px); }
+  75%  { transform: translateX(-3px); }
+  90%  { transform: translateX(3px); }
+  100% { transform: translateX(0); }
+}
+
+.wc-beta-gate-input--invalid {
+  border-color: var(--danger) !important;
+  animation: wc-shake 0.45s ease;
 }
 
 .wc-round-label {
@@ -1159,6 +1169,40 @@ select {
   overflow: hidden;
 }
 
+/* Drag-to-reorder (desktop) visual states */
+.wc-nav-swipe-row--dragging { opacity: 0.45; }
+.wc-nav-swipe-row--dragover { box-shadow: inset 0 2px 0 0 var(--accent, #1266d6); }
+@media (hover: hover) and (pointer: fine) {
+  .wc-nav-item { cursor: grab; }
+  .wc-nav-swipe-row--dragging .wc-nav-item { cursor: grabbing; }
+}
+
+/* Desktop hover-revealed delete button (overlays the row's right edge) */
+.wc-nav-hover-delete {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: var(--danger);
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 2;
+}
+@media (hover: hover) and (pointer: fine) {
+  .wc-nav-hover-delete { display: flex; }
+  .wc-nav-swipe-row:hover .wc-nav-hover-delete { opacity: 1; }
+  .wc-nav-swipe-row--dragging .wc-nav-hover-delete { opacity: 0; }
+}
+
 /* Delete button revealed on swipe */
 .wc-nav-swipe-delete {
   position: absolute;
@@ -1373,7 +1417,7 @@ select {
   top: calc(100% + 6px);
   right: 0;
   z-index: 200;
-  min-width: 160px;
+  min-width: 220px;
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1595,6 +1639,17 @@ select {
   display: flex;
   flex-direction: column;
   gap: 0;                 /* no gap between sections — section headers handle their own spacing */
+}
+
+.wc-feed-pull {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  color: var(--text-1);
+  overflow: hidden;
+  transition: height 120ms ease;
+  flex-shrink: 0;
 }
 
 .wc-feed-empty {
@@ -3726,6 +3781,13 @@ select {
   color: var(--text-1);
 }
 
+.wc-fd-scorebug-pens {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-top: 2px;
+}
+
 .wc-fd-scorebug-venue {
   font-size: 0.72rem;
   color: var(--text-1);
@@ -3967,7 +4029,29 @@ select {
 
 .wc-profile-avatar-wrap {
   flex-shrink: 0;
+  position: relative;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 50%;
 }
+.wc-profile-avatar-wrap:disabled { cursor: default; opacity: 0.7; }
+
+.wc-profile-avatar-uploading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.45);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.wc-profile-avatar-error { color: var(--danger, #d33); }
 
 .wc-profile-avatar-img {
   width: 64px;
@@ -4389,7 +4473,8 @@ select {
 .wc-mobile-nav {
   display: none;
   flex-shrink: 0;
-  height: var(--mobile-nav-h);
+  height: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   border-top: 1px solid var(--line);
   background: var(--glass-strong);
   backdrop-filter: blur(16px);
@@ -4850,7 +4935,7 @@ select {
   right: 0;
   bottom: 0;
   z-index: 29;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.25);
 }
 
 .wc-notif-drawer {
@@ -4860,11 +4945,11 @@ select {
   top: var(--topbar-h);
   right: 0;
   bottom: 0;
-  width: min(80vw, 300px);
+  width: min(80vw, 260px);
   z-index: 30;
   background: var(--bg-0);
-  box-shadow: -4px 0 32px rgba(0, 0, 0, 0.18);
-  animation: slideInRight 0.22s ease;
+  box-shadow: -2px 0 24px rgba(0, 0, 0, 0.14);
+  animation: slideInRight 0.2s ease;
 }
 
 @keyframes slideInRight {
@@ -4872,13 +4957,63 @@ select {
   to   { transform: translateX(0); }
 }
 
+/* Drawer header */
+.wc-notif-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--separator);
+  flex-shrink: 0;
+}
+
+.wc-notif-drawer-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.wc-notif-drawer-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.12s, color 0.12s;
+}
+.wc-notif-drawer-close:hover {
+  background: var(--bg-1);
+  color: var(--text-1);
+}
+
+/* Drawer scrollable body */
+.wc-notif-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Empty state */
+.wc-notif-drawer-empty {
+  padding: 28px 20px;
+  font-size: 0.875rem;
+  color: var(--text-2);
+  text-align: center;
+}
+
 /* Notification rows */
 .wc-notif-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 14px 16px;
+  padding: 11px 14px;
   background: var(--bg-0);
   border: none;
   border-bottom: 1px solid var(--separator);
@@ -4886,48 +5021,111 @@ select {
   text-align: left;
   transition: background 0.12s;
 }
+.wc-notif-row:hover {
+  background: var(--bg-1);
+}
 .wc-notif-row:active {
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-0));
+}
+
+/* Small avatar inside notification rows */
+.wc-notif-row-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .wc-notif-row-body {
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: 2px;
+  gap: 1px;
+  min-width: 0;
+}
+
+.wc-notif-row-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wc-notif-row-count {
+  font-size: 0.775rem;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wc-notif-row-count--urgent {
+  color: var(--danger);
+  font-weight: 600;
 }
 
 .wc-notif-row-label {
-  font-size: 0.9rem;
-  font-weight: 700;
+  font-size: 0.875rem;
+  font-weight: 600;
   color: var(--text-1);
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
-.wc-notif-row-label--urgent {
-  color: var(--danger);
-}
-
-.wc-notif-row-label--ok {
-  color: var(--ok, #22c55e);
-}
-
-.wc-notif-row-label--muted {
-  color: var(--text-2);
-}
+.wc-notif-row-label--urgent { color: var(--danger); }
+.wc-notif-row-label--ok     { color: var(--ok, #22c55e); }
+.wc-notif-row-label--muted  { color: var(--text-2); }
 
 .wc-notif-row-sub {
-  font-size: 0.8rem;
+  font-size: 0.775rem;
   color: var(--text-2);
+}
+
+.wc-notif-row-chevron {
+  color: var(--text-3, var(--text-2));
+  flex-shrink: 0;
+  opacity: 0.5;
 }
 
 .wc-notif-urgent-dot {
-  display: block;
-  width: 8px;
-  height: 8px;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--danger);
   flex-shrink: 0;
+  vertical-align: middle;
+}
+
+/* Drawer footer with Clear button */
+.wc-notif-drawer-footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--separator);
+  flex-shrink: 0;
+}
+
+.wc-notif-drawer-clear {
+  width: 100%;
+  padding: 8px 0;
+  border: 1px solid var(--separator);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 0.825rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.wc-notif-drawer-clear:hover {
+  background: var(--bg-1);
+  color: var(--text-1);
+  border-color: var(--text-2);
 }
 
 /* ── Scorebug hint tooltip ───────────────────────────────────────────────────── */
