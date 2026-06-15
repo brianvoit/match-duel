@@ -1399,6 +1399,33 @@ select {
   color: var(--accent);
 }
 
+/* Jump-to-today pill — accented so it reads as an action, not a filter. */
+.wc-today-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+  animation: wc-today-in 0.16s ease;
+}
+
+.wc-today-btn:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+@keyframes wc-today-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .wc-filter-badge {
   display: inline-flex;
   align-items: center;
@@ -2314,6 +2341,10 @@ select {
   flex-shrink: 0;
 }
 
+.wc-chat-online-label--off {
+  color: var(--text-2);
+}
+
 /* Presence dot — shared by chat header + scorebug */
 .wc-presence-dot {
   position: absolute;
@@ -2671,6 +2702,25 @@ select {
   letter-spacing: 0.06em;
   color: var(--danger);
   margin-left: 6px;
+}
+
+/* Green "live" dot on the fixture list — pulses to signal matches in progress. */
+.wc-live-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ok);
+  margin-left: 6px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 70%, transparent);
+  animation: wc-live-pulse 1.8s ease-out infinite;
+}
+
+@keyframes wc-live-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); }
+  70%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ok) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 0%, transparent); }
 }
 
 .wc-fixture-grid {
@@ -4576,6 +4626,77 @@ select {
     background: var(--glass-strong);
     backdrop-filter: blur(18px);
     border-bottom: 1px solid var(--separator);
+  }
+
+  /* Chat view: hide the bottom nav, so the overlay owns the full viewport. We
+     bind its height to the visual viewport (--vvh, set in JS) so the composer
+     stays pinned just above the on-screen keyboard with no layout jump. */
+  .wc-mobile-overlay--chat {
+    bottom: auto;
+    height: var(--vvh, 100dvh);
+  }
+
+  .wc-mobile-overlay-nav--chat {
+    height: auto;
+    min-height: var(--topbar-h);
+    padding: 6px 12px;
+    gap: 8px;
+  }
+
+  .wc-chat-nav-id {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .wc-chat-nav-avatar-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .wc-chat-nav-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .wc-chat-nav-avatar--init {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .wc-chat-nav-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.15;
+  }
+
+  .wc-chat-nav-name {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .wc-chat-nav-status {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-2);
+  }
+
+  .wc-chat-nav-status--online {
+    color: var(--ok);
   }
 
   .wc-mobile-overlay-title {

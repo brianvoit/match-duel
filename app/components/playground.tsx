@@ -19,6 +19,7 @@ import {
   computeMatchdays, tournamentMatchday, initials, urlBase64ToUint8Array, StatusGlyph,
 } from '@/app/components/playground-utils';
 import { avatarColor } from '@/lib/avatar-color';
+import { usePresence } from '@/lib/realtime/usePresence';
 
 // Types are imported from playground-types.ts
 
@@ -120,6 +121,8 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   const [hideOpponentPicks, setHideOpponentPicks] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
+  // "Today" jump button — shown only when today's fixtures are scrolled out of view.
+  const [showTodayBtn, setShowTodayBtn] = useState(false);
 
   // ── Data state ─────────────────────────────────────────────────────────────
   const [matchups, setMatchups] = useState<Matchup[]>([]);
@@ -143,8 +146,15 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [totalUnread, setTotalUnread] = useState(0);
-  const [opponentOnline, setOpponentOnline] = useState(false);
   const [savingName, setSavingName] = useState(false);
+  // Opponent presence on the selected matchup. "Online" means they currently
+  // have the app open and focused — presence is tracked only while the tab is
+  // visible and is keyed by app user id (see usePresence).
+  const { anyOnline: opponentOnline } = usePresence(
+    `presence-${selectedMatchupId ?? 'none'}`,
+    myAppUserId ?? '',
+    { enabled: Boolean(selectedMatchupId && myAppUserId) },
+  );
   const [defaultPickSide, setDefaultPickSide] = useState<'HOME' | 'AWAY'>('HOME');
   const [savingDefaultPick, setSavingDefaultPick] = useState(false);
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>('system');
@@ -326,7 +336,51 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
 
   function scrollFeedToToday() {
     if (todayAnchorFixtureId) scrollFeedToFixture(todayAnchorFixtureId);
+    setShowTodayBtn(false);
   }
+
+  // Boolean (not a narrowing comparison) so JSX guards using it don't narrow the
+  // `mobileView` union away from 'chat' for sibling elements.
+  const mobileChatOpen: boolean = mobileView === 'chat';
+
+  // Show the "Today" jump button whenever today's anchor fixture is scrolled out
+  // of the visible feed region (above the fold or below it).
+  const updateTodayBtn = useCallback(() => {
+    const c = feedScrollRef.current;
+    if (!c || !todayAnchorFixtureId) { setShowTodayBtn(false); return; }
+    const el = c.querySelector<HTMLElement>(`[data-fixture-id="${todayAnchorFixtureId}"]`);
+    if (!el) { setShowTodayBtn(false); return; }
+    const cRect = c.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    const stickyTop = cRect.top + feedStickyOffset(c);
+    const visible = eRect.bottom > stickyTop && eRect.top < cRect.bottom;
+    setShowTodayBtn(!visible);
+  }, [todayAnchorFixtureId]);
+
+  // ── Mobile chat keyboard handling ───────────────────────────────────────────
+  // When the on-screen keyboard opens, iOS shrinks the *visual* viewport but not
+  // the layout viewport, so a `position: fixed` overlay keeps its full height and
+  // the input gets pushed behind the keyboard (the page then jump-scrolls). We
+  // mirror the visual viewport height into --vvh and size the chat overlay to it,
+  // keeping the composer pinned just above the keyboard with no layout jump.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (mobileView !== 'chat' || !vv) {
+      document.documentElement.style.removeProperty('--vvh');
+      return;
+    }
+    const apply = () => {
+      document.documentElement.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+    };
+    apply();
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    return () => {
+      vv.removeEventListener('resize', apply);
+      vv.removeEventListener('scroll', apply);
+      document.documentElement.style.removeProperty('--vvh');
+    };
+  }, [mobileView]);
 
   // ── Scorebug hint ──────────────────────────────────────────────────────────
 
@@ -2361,9 +2415,20 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           <div className="wc-feed-header">
             <span className="wc-feed-title">Fixtures</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {hasLiveFixtures && <span className="wc-live-badge">🔴</span>}
+              {hasLiveFixtures && <span className="wc-live-dot" role="status" aria-label="Live matches in progress" />}
               {(filterStage || hideMyPicks || hideOpponentPicks) && (
                 <span className="wc-feed-count">{totalVisibleCount}</span>
+              )}
+
+              {/* Jump-to-today — appears only when today is scrolled out of view */}
+              {fixtures.length > 0 && showTodayBtn && (
+                <button className="wc-today-btn" onClick={scrollFeedToToday} aria-label="Jump to today's fixtures">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.6"/>
+                    <circle cx="8" cy="8" r="1.8" fill="currentColor"/>
+                  </svg>
+                  Today
+                </button>
               )}
 
               {/* Filter button + flyout */}
@@ -2435,6 +2500,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           <div
             className="wc-feed-scroll"
             ref={feedScrollRef}
+            onScroll={updateTodayBtn}
             onTouchStart={(e) => {
               const c = feedScrollRef.current;
               pullStartY.current = c && c.scrollTop <= 0 ? e.touches[0].clientY : null;
@@ -2527,11 +2593,19 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                             minute: '2-digit',
                           });
 
+                          // Matchday date, e.g. "Thu · June 18" (viewer-local).
+                          const matchdayDateLabel = fixtureDate.toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'long',
+                            day: 'numeric',
+                          }).replace(',', ' ·');
+
                           return (
                             <Fragment key={f.id}>
                               {showHeader && (
                                 <div className="wc-matchday-header">
                                   <span>Matchday {tournamentDay}</span>
+                                  <span className="wc-matchday-header-date">{matchdayDateLabel}</span>
                                 </div>
                               )}
                               <button
@@ -2694,7 +2768,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 aria-pressed={contentTab === 'details'}
                 onClick={() => setContentTab('details')}
               >
-                {hasLiveFixtures ? '🔴 ' : ''}Match Details
+                Match Details
               </button>
               <button
                 className="wc-content-tab"
@@ -2794,7 +2868,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                       fetch('/api/messages/unread-count', { cache: 'no-store' })
                         .then(r => r.json()).then(d => { if (d.ok) setTotalUnread(d.total ?? 0); }).catch(() => {});
                     }}
-                    onPresenceChange={(online) => setOpponentOnline(online)}
+                    opponentOnline={opponentOnline}
                   />
                 ) : (
                   <div className="wc-content-empty">
@@ -2857,7 +2931,9 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
         </aside>
       </div>
 
-      {/* Mobile bottom nav */}
+      {/* Mobile bottom nav — hidden in the chat view (the ‹ back button is enough,
+          and hiding it frees the full viewport for the keyboard). */}
+      {!mobileChatOpen && (
       <nav className="wc-mobile-nav" aria-label="Mobile navigation">
 
         {/* Matches */}
@@ -2866,17 +2942,13 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           aria-pressed={mobileView === 'feed' || mobileView === 'content'}
           onClick={() => setMobileView('feed')}
         >
-          {/* Soccer ball — outline glyph, consistent with Chat icon style  */}
-          {/* Pentagon center at (12,11) r=3, 5 spokes to circle r=10          */}
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.6"/>
-            <polygon points="12,8 14.85,10.07 13.76,13.43 10.24,13.43 9.15,10.07"
-              stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-            <line x1="12"    y1="8"     x2="12"    y2="2"     stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <line x1="14.85" y1="10.07" x2="21.17" y2="8.02"  stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <line x1="13.76" y1="13.43" x2="18.34" y2="19.74" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <line x1="10.24" y1="13.43" x2="5.66"  y2="19.74" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <line x1="9.15"  y1="10.07" x2="2.83"  y2="8.02"  stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          {/* Soccer ball — custom filled glyph (uses currentColor). */}
+          <svg width="22" height="22" viewBox="0 0 1080 1080" fill="currentColor" aria-hidden="true">
+            <g transform="matrix(2.38008,0,0,2.38008,596.408,987.664)">
+              <g transform="matrix(1,0,0,1,-372.045,-526.2)">
+                <path fillRule="nonzero" d="M337.37,491.22C276.473,487.031 223,438.824 207.91,380.46C193.986,319.943 221.638,251.8 275.591,220.2C310.295,199.387 353.841,196.785 392.251,207.626C439.693,222.265 475.805,264.655 488.482,311.946C499.87,355.528 491.657,405.014 461.388,439.356C433.974,473.643 390.152,493.397 346.328,491.633C343.341,491.571 340.356,491.43 337.376,491.214L337.37,491.22ZM373.667,484.361C384.594,483.404 382.674,480.039 372.735,479.185C354.978,475.753 335.805,475.664 318.668,481.682C333.754,488.985 353.794,487.105 370.682,484.926L373.667,484.361L373.667,484.361L373.667,484.361ZM319.866,474.721C327.664,466.731 319.529,447.64 312.714,440.075C297.482,432.271 285.671,419.516 271.739,409.897C261.246,406.062 251.012,413.351 240.87,415.821C240.824,425.885 240.171,437.247 248.991,444.245C263.511,458.636 281.037,471.25 300.816,476.983C307.169,477.28 313.841,476.892 319.866,474.721L319.866,474.721ZM403.37,475.123C428.643,464.188 452.35,446.615 466.602,422.699C471.733,415.817 475.501,403.768 462.098,407.753C445.262,418.377 430.058,431.527 412.81,441.592C402.352,449.895 394.819,461.321 387.385,472.248C389.977,478.301 398.401,476.858 403.37,475.123L403.37,475.123ZM420.502,431.181C433.206,420.721 451.588,413.983 458.258,398.116C461.272,385.639 461.508,372.727 462.765,359.999C450.106,348.725 434.559,341.079 419.359,333.855C404.337,335.062 392.196,348.447 380.317,357.121C373.987,360.628 375.612,368.509 373.892,374.551C371.59,388.678 368.925,402.762 367.391,417C379.21,425.776 392.405,433.831 406.776,437.216C411.969,437.28 416.284,433.75 420.503,431.18L420.502,431.181ZM329.89,433.383C341.395,428.979 356.619,425.653 362.02,413.423C366.025,396.286 368.253,378.749 370.369,361.292C358.939,350.387 346.735,338.889 331.747,333.199C318.818,332.991 307.86,342.165 296.355,347.176C280.876,351.39 275.5,365.514 274.823,380.102C270.282,394.532 275.494,409.356 288.546,417.309C299.946,425.739 314.597,439.182 329.889,433.383L329.89,433.383ZM233.594,413.159C224.26,395.846 217.823,376.887 215.253,357.381C206.022,359.245 214.412,381.967 216.956,391.238C221.308,403.761 227.967,415.273 234.87,426.53C236.132,421.898 236.881,417.298 233.594,413.159L233.594,413.159ZM229.574,336.09C233.65,330.252 240.138,325.643 242.583,318.974C246.898,298.782 253.937,279.289 264.005,261.237C263.58,249.574 250.59,242.488 244.123,255.34C225.695,279.131 211.239,308.122 210.603,338.72C208.18,349.215 217.287,356.849 222.534,344.422C224.885,341.648 227.231,338.87 229.575,336.09L229.574,336.09ZM466.874,350.556C474.685,340.278 485.48,328.078 482.673,314.156C477.785,287.758 464.266,262.694 443.5,245.49C437.335,242.868 426.067,233.222 421.766,242.333C415.409,254.575 399.599,266.149 405.295,281.395C410.178,296.445 413.741,312.175 420.86,326.347C433.955,336.594 449.123,344.559 464.374,351.281L466.874,350.556L466.874,350.556L466.874,350.556ZM292.644,343.712C304.736,337.591 316.481,330.823 328.272,324.149C332.248,310.223 337.238,296.617 341.888,282.923C342.538,268.116 329.362,257.478 320.548,247.093C311.892,233.202 297.244,243.857 286.558,248.937C263.04,261.528 257.641,289.246 249.651,312.383C250.76,321.047 258.673,328.279 264.449,334.756C272.432,342.788 281.407,353.522 292.644,343.712L292.644,343.712ZM379.374,268.867C385.629,268.007 392.616,268.636 398.423,266.862C407.11,257.486 414.756,246.502 418.374,234.18C414.006,221.758 399.535,216.097 387.917,211.868C373.116,207.453 357.268,205.291 341.905,207.035C330.816,212.712 310.926,229.185 322.156,241.954C330.382,251.773 339.138,261.129 348.054,270.321C358.513,270.423 368.948,269.605 379.374,268.867L379.374,268.867Z"/>
+              </g>
+            </g>
           </svg>
           <span>Matches</span>
         </button>
@@ -2910,6 +2982,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           <span>Profile</span>
         </button>
       </nav>
+      )}
 
       {/* ── Mobile: Matchup switcher drawer (hamburger) ───────────────────────── */}
       {matchupDrawerOpen && (
@@ -3120,16 +3193,33 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
 
       {/* ── Mobile: Chat full-screen ──────────────────────────────────────────── */}
       {mobileView === 'chat' && (
-        <div className="wc-mobile-overlay">
-          <div className="wc-mobile-overlay-nav">
+        <div className="wc-mobile-overlay wc-mobile-overlay--chat">
+          <div className="wc-mobile-overlay-nav wc-mobile-overlay-nav--chat">
             <button className="wc-topbar-icon-btn" aria-label="Back" onClick={() => setMobileView('feed')}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-            <span className="wc-mobile-overlay-title">
-              {selectedMatchup?.opponentDisplayName ?? selectedMatchup?.opponentEmail?.split('@')[0] ?? 'Chat'}
-            </span>
+            {(() => {
+              const oppName = selectedMatchup?.opponentDisplayName ?? selectedMatchup?.opponentEmail?.split('@')[0] ?? 'Chat';
+              return (
+                <div className="wc-chat-nav-id">
+                  <div className="wc-chat-nav-avatar-wrap">
+                    {selectedMatchup?.opponentAvatarUrl
+                      ? <img src={selectedMatchup.opponentAvatarUrl} className="wc-chat-nav-avatar" referrerPolicy="no-referrer" alt={oppName} />
+                      : <span className="wc-chat-nav-avatar wc-chat-nav-avatar--init" style={{ background: avatarColor(selectedMatchup?.opponentEmail) }}>{initials(oppName)}</span>
+                    }
+                    {opponentOnline && <span className="wc-presence-dot" />}
+                  </div>
+                  <div className="wc-chat-nav-text">
+                    <span className="wc-chat-nav-name">{oppName}</span>
+                    <span className={`wc-chat-nav-status${opponentOnline ? ' wc-chat-nav-status--online' : ''}`}>
+                      {opponentOnline ? 'online' : 'offline'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ width: 34 }} />
           </div>
           <div className="wc-mobile-overlay-body wc-mobile-overlay-body--chat">
@@ -3145,7 +3235,8 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                   fetch('/api/messages/unread-count', { cache: 'no-store' })
                     .then(r => r.json()).then(d => { if (d.ok) setTotalUnread(d.total ?? 0); }).catch(() => {});
                 }}
-                onPresenceChange={(online) => setOpponentOnline(online)}
+                opponentOnline={opponentOnline}
+                hideHeader
               />
             ) : (
               <p className="wc-subtitle" style={{ padding: '24px 16px' }}>

@@ -14,6 +14,13 @@
       "runtimeArgs": ["TZ=UTC", "BYPASS_AUTH=true", "DEV_USER_EMAIL=swimmer571@gmail.com", "npm", "run", "start"],
       "port": 3000,
       "autoPort": false
+    },
+    {
+      "name": "dev-bypass",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["BYPASS_AUTH=true", "DEV_USER_EMAIL=swimmer571@gmail.com", "npm", "run", "dev"],
+      "port": 3000,
+      "autoPort": false
     }
   ]
 }

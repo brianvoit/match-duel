@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { avatarColor } from '@/lib/avatar-color';
+import { useRealtimeChannel } from '@/lib/realtime/useRealtimeChannel';
 
 const PRESET_REACTIONS = ['👍', '❤️', '😂', '😮', '💀', '💯', '👌'];
 
@@ -26,7 +26,11 @@ interface ChatPanelProps {
   opponentEmail: string | null;
   opponentAvatarUrl: string | null;
   onMarkRead: () => void;
-  onPresenceChange?: (online: boolean) => void;
+  /** Whether the opponent is currently present (computed by the parent). */
+  opponentOnline?: boolean;
+  /** Hide the built-in opponent header — used on mobile where the overlay nav
+   *  already shows the opponent's name + presence. */
+  hideHeader?: boolean;
 }
 
 function initials(s: string | null | undefined) {
@@ -46,17 +50,15 @@ export function ChatPanel({
   matchupId, myAppUserId, myAvatarUrl,
   opponentDisplayName, opponentEmail, opponentAvatarUrl,
   onMarkRead,
-  onPresenceChange,
+  opponentOnline = false,
+  hideHeader = false,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [pickerMsgId, setPickerMsgId] = useState<string | null>(null);
-  const [opponentOnline, setOpponentOnline] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
-  const supabase = createClient();
   const oppName = opponentDisplayName || opponentEmail?.split('@')[0] || 'Opponent';
 
   const scrollToBottom = useCallback(() => {
@@ -79,41 +81,23 @@ export function ChatPanel({
     onMarkRead();
   }, [matchupId, onMarkRead]);
 
-  // Initial load + realtime + presence
+  // Initial load + mark read whenever the matchup changes.
   useEffect(() => {
     loadMessages();
     markRead();
+  }, [matchupId, loadMessages, markRead]);
 
-    // Realtime: broadcast for new messages (works on Nano), postgres_changes for reactions
-    const channel = supabase
-      .channel(`chat-${matchupId}`)
+  // Realtime: broadcast for new messages (works on Nano), postgres_changes for
+  // reactions. The hook handles reconnect-on-focus, backoff, and cleanup.
+  const { channelRef } = useRealtimeChannel(
+    `chat-${matchupId}`,
+    (channel) => channel
       .on('broadcast', { event: 'new-message' }, () => { loadMessages(); markRead(); })
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'message_reaction',
-      }, () => { loadMessages(); })
-      .subscribe();
-
-    channelRef.current = channel;
-
-    // Presence — reuse the same channel to save a connection
-    const presenceCh = supabase.channel(`presence-${matchupId}`);
-    presenceCh
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceCh.presenceState();
-        const online = Object.keys(state).some((k) => k !== myAppUserId);
-        setOpponentOnline(online);
-        onPresenceChange?.(online);
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') await presenceCh.track({ userId: myAppUserId });
-      });
-
-    return () => {
-      channelRef.current = null;
-      supabase.removeChannel(channel);
-      supabase.removeChannel(presenceCh);
-    };
-  }, [matchupId, myAppUserId, loadMessages, markRead]);
+      }, () => { loadMessages(); }),
+    { enabled: Boolean(matchupId) },
+  );
 
   // Polling fallback — catches messages if realtime drops. Supabase Realtime
   // handles all normal delivery; this only fires every 2 minutes as a safety net.
@@ -171,18 +155,22 @@ export function ChatPanel({
 
   return (
     <div className="wc-chat">
-      {/* Opponent header */}
-      <div className="wc-chat-header">
-        <div className="wc-chat-opp-wrap">
-          {opponentAvatarUrl
-            ? <img src={opponentAvatarUrl} className="wc-chat-opp-avatar" referrerPolicy="no-referrer" alt={oppName} />
-            : <span className="wc-chat-opp-avatar wc-chat-opp-avatar--init" style={{ background: avatarColor(opponentEmail) }}>{initials(oppName)}</span>
-          }
-          {opponentOnline && <span className="wc-presence-dot" />}
+      {/* Opponent header (hidden on mobile — the overlay nav shows it there) */}
+      {!hideHeader && (
+        <div className="wc-chat-header">
+          <div className="wc-chat-opp-wrap">
+            {opponentAvatarUrl
+              ? <img src={opponentAvatarUrl} className="wc-chat-opp-avatar" referrerPolicy="no-referrer" alt={oppName} />
+              : <span className="wc-chat-opp-avatar wc-chat-opp-avatar--init" style={{ background: avatarColor(opponentEmail) }}>{initials(oppName)}</span>
+            }
+            {opponentOnline && <span className="wc-presence-dot" />}
+          </div>
+          <span className="wc-chat-opp-name">{oppName}</span>
+          <span className={`wc-chat-online-label${opponentOnline ? '' : ' wc-chat-online-label--off'}`}>
+            {opponentOnline ? 'online' : 'offline'}
+          </span>
         </div>
-        <span className="wc-chat-opp-name">{oppName}</span>
-        {opponentOnline && <span className="wc-chat-online-label">online</span>}
-      </div>
+      )}
 
       {/* Message list */}
       <div className="wc-chat-messages" ref={scrollRef} onClick={() => setPickerMsgId(null)}>
