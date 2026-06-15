@@ -1,6 +1,10 @@
 // Lazy getters — values are read at request time, never at module load /
 // build time. This means the build never crashes due to missing env vars,
 // and Next.js still inlines NEXT_PUBLIC_* references correctly at compile time.
+//
+// cache-bust v2: force a new client chunk hash so wrangler re-uploads it (a
+// prior build shipped this chunk with an empty anon key and wrangler was
+// skipping the same-named file on subsequent deploys).
 
 export const clientEnv = {
   get NEXT_PUBLIC_SUPABASE_URL(): string {
