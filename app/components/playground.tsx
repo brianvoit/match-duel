@@ -359,18 +359,32 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
 
   // ── Mobile chat keyboard handling ───────────────────────────────────────────
   // When the on-screen keyboard opens, iOS shrinks the *visual* viewport but not
-  // the layout viewport, so a `position: fixed` overlay keeps its full height and
-  // the input gets pushed behind the keyboard (the page then jump-scrolls). We
-  // mirror the visual viewport height into --vvh and size the chat overlay to it,
-  // keeping the composer pinned just above the keyboard with no layout jump.
+  // the layout viewport, and it scrolls the layout to reveal the focused input.
+  // A `position: fixed; top: 0` overlay then ends up partly above the visible
+  // area (blank space) with the composer behind the keyboard. We pin the chat
+  // overlay exactly to the visual viewport by mirroring its height (--vvh) AND
+  // its scroll offset (--vv-top, applied as a translateY), and we lock the body
+  // so the page itself can't scroll underneath while chat is open.
   useEffect(() => {
     const vv = window.visualViewport;
-    if (mobileView !== 'chat' || !vv) {
-      document.documentElement.style.removeProperty('--vvh');
-      return;
-    }
+    const root = document.documentElement;
+    const clear = () => {
+      root.style.removeProperty('--vvh');
+      root.style.removeProperty('--vv-top');
+      document.body.style.removeProperty('overflow');
+      document.body.style.removeProperty('position');
+      document.body.style.removeProperty('width');
+    };
+    if (mobileView !== 'chat' || !vv) { clear(); return; }
+
+    // Lock the body so focusing the input can't scroll the page behind the overlay.
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+
     const apply = () => {
-      document.documentElement.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+      root.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+      root.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
     };
     apply();
     vv.addEventListener('resize', apply);
@@ -378,7 +392,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     return () => {
       vv.removeEventListener('resize', apply);
       vv.removeEventListener('scroll', apply);
-      document.documentElement.style.removeProperty('--vvh');
+      clear();
     };
   }, [mobileView]);
 

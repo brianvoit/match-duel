@@ -4632,8 +4632,11 @@ select {
      bind its height to the visual viewport (--vvh, set in JS) so the composer
      stays pinned just above the on-screen keyboard with no layout jump. */
   .wc-mobile-overlay--chat {
+    top: 0;
     bottom: auto;
     height: var(--vvh, 100dvh);
+    /* Re-align to the visual viewport when iOS scrolls the layout on focus. */
+    transform: translateY(var(--vv-top, 0px));
   }
 
   .wc-mobile-overlay-nav--chat {
