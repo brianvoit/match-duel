@@ -15,6 +15,14 @@ import type { ProviderFixture } from '@/lib/jobs/fixtureProvider';
 const BASE_URL = 'https://v3.football.api-sports.io';
 export const WC_LEAGUE_ID = 1; // FIFA World Cup is always league 1
 
+/** Thrown when API-Football's per-minute rate limit is hit; callers skip the run. */
+export class ApiFootballRateLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApiFootballRateLimitError';
+  }
+}
+
 // ── API response types ────────────────────────────────────────────────────────
 
 interface ApiStatus {
@@ -135,7 +143,13 @@ export async function fetchApiFootballFixtures(
   };
 
   if (data.errors && Object.keys(data.errors).length > 0) {
-    throw new Error(`API-Football error: ${JSON.stringify(data.errors)}`);
+    const text = JSON.stringify(data.errors);
+    // Per-minute rate limit: surface a typed error so callers can skip this run
+    // gracefully rather than 500 (which makes the cron retry and pile on).
+    if (/rateLimit|too many requests/i.test(text)) {
+      throw new ApiFootballRateLimitError(text);
+    }
+    throw new Error(`API-Football error: ${text}`);
   }
 
   return data.response ?? [];

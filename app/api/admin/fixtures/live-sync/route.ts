@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchApiFootballFixtures, mapToProviderFixtures, WC_LEAGUE_ID } from '@/lib/jobs/apiFootballClient';
+import { fetchApiFootballFixtures, mapToProviderFixtures, WC_LEAGUE_ID, ApiFootballRateLimitError } from '@/lib/jobs/apiFootballClient';
 import { runFixtureSync } from '@/lib/jobs/fixtureSync';
 import { runRoundTransitions, runLockedPickDefaults } from '@/lib/jobs/roundTransitions';
 import { invalidateCache } from '@/lib/jobs/fixtureApiCache';
@@ -147,7 +147,13 @@ export async function POST(req: NextRequest) {
       transitions,
     });
   } catch (err) {
+    // Per-minute rate limit: skip this run cleanly (200) so the cron doesn't
+    // retry-storm and pile more requests onto an already-throttled API.
+    if (err instanceof ApiFootballRateLimitError) {
+      return NextResponse.json({ ok: true, skipped: 'rate_limit' });
+    }
     const message = err instanceof Error ? err.message : String(err);
+    console.error('[live-sync] FAILED:', message, err instanceof Error ? err.stack : '');
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
