@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:worker": "opennextjs-cloudflare build",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy && node scripts/set-worker-unbound.mjs && node scripts/prewarm-worker.mjs",
+    "deploy": "rm -rf .next .open-next && opennextjs-cloudflare build && opennextjs-cloudflare deploy && node scripts/set-worker-unbound.mjs && node scripts/prewarm-worker.mjs",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "start": "next start",
     "typecheck": "tsc --noEmit",
