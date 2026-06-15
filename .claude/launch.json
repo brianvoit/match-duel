@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": false
+    },
+    {
+      "name": "prodstart",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["TZ=UTC", "BYPASS_AUTH=true", "DEV_USER_EMAIL=swimmer571@gmail.com", "npm", "run", "start"],
+      "port": 3000,
+      "autoPort": false
     }
   ]
 }
