@@ -246,30 +246,32 @@ export function ChatPanel({
         )}
       </div>
 
-      {/* Input */}
+      {/* Input — single inline pill: textarea grows, send button sits inside on the right */}
       <div className="wc-chat-input-wrap">
-        <textarea
-          ref={textareaRef}
-          className="wc-chat-textarea"
-          value={input}
-          maxLength={500}
-          rows={1}
-          placeholder="Message…"
+        <div className="wc-chat-input-pill">
+          <textarea
+            ref={textareaRef}
+            className="wc-chat-textarea"
+            value={input}
+            maxLength={500}
+            rows={1}
+            placeholder="Message…"
 
-          onChange={(e) => {
-            setInput(e.target.value);
-            e.target.style.height = 'auto';
-            e.target.style.height = Math.min(e.target.scrollHeight, 96) + 'px';
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-          }}
-        />
-        <div className="wc-chat-input-footer">
-          <span className={`wc-chat-char${input.length > 450 ? ' wc-chat-char--warn' : ''}`}>
-            {500 - input.length}
-          </span>
-          <button className="wc-chat-send" disabled={!input.trim() || sending} onClick={sendMessage}>
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 96) + 'px';
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+            }}
+          />
+          {input.length > 450 && (
+            <span className={`wc-chat-char${input.length > 450 ? ' wc-chat-char--warn' : ''}`}>
+              {500 - input.length}
+            </span>
+          )}
+          <button className="wc-chat-send" disabled={!input.trim() || sending} onClick={sendMessage} aria-label="Send">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M8 13V3M3 8l5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

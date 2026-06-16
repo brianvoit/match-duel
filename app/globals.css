@@ -2539,42 +2539,51 @@ select {
   background: var(--glass-strong);
 }
 
-.wc-chat-textarea {
-  display: block;
+/* Single inline pill holding the textarea + send button (iMessage-style), so the
+   composer is one compact row instead of input-over-footer. */
+.wc-chat-input-pill {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
   width: 100%;
+  box-sizing: border-box;
   background: var(--glass);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 7px 11px;
-  font-size: 0.84rem;
+  border-radius: 20px;
+  padding: 3px 4px 3px 12px;
+  transition: border-color 0.12s;
+}
+
+.wc-chat-input-pill:focus-within { border-color: var(--accent); }
+
+.wc-chat-textarea {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 6px 0;
+  /* 16px keeps iOS Safari from auto-zooming (and pushing the send button /
+     right edge off-screen) when the field is focused. */
+  font-size: 16px;
   font-family: inherit;
   color: var(--text-0);
   resize: none;
   outline: none;
-  min-height: 34px;
+  min-height: 24px;
   max-height: 96px;
   overflow-y: auto;
   line-height: 1.4;
   box-sizing: border-box;
-  transition: border-color 0.12s;
 }
 
-.wc-chat-textarea:focus { border-color: var(--accent); }
 .wc-chat-textarea::placeholder { color: var(--text-2); }
 
-.wc-chat-input-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  margin-top: 5px;
-}
-
 .wc-chat-char {
+  align-self: center;
   font-size: 0.65rem;
   color: var(--text-2);
-  min-width: 22px;
   text-align: right;
+  flex-shrink: 0;
 }
 
 .wc-chat-char--warn { color: var(--danger); }
@@ -2583,8 +2592,8 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   border: none;
   background: var(--accent);
