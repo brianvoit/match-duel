@@ -2543,7 +2543,7 @@ select {
    composer is one compact row instead of input-over-footer. */
 .wc-chat-input-pill {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
   width: 100%;
   box-sizing: border-box;
