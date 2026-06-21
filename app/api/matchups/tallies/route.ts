@@ -1,0 +1,107 @@
+import { getAuthenticatedUser } from '@/lib/supabase/get-user';
+import { NextResponse } from 'next/server';
+import { createServiceRoleClient } from '@/lib/supabase/service';
+import { evaluatePick, WORLD_CUP_2026_SCORING } from '@/lib/domain/scoring';
+import type { StageName } from '@/lib/domain/types';
+
+/**
+ * Live duel tally for every matchup the authenticated user is in, in a single
+ * call. "Live" = points from ALL finished fixtures (settled rounds + in-progress
+ * round), so the numbers match the top scorebug (settled standing + provisional)
+ * rather than the settled-only `matchup_standing` table.
+ *
+ * Returns: { ok, tallies: { [matchupId]: { mine, opp } } }
+ */
+export async function GET() {
+  const appUser = await getAuthenticatedUser();
+  if (!appUser) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  const service = createServiceRoleClient();
+
+  // Matchups I'm in
+  const { data: mineRows } = await service
+    .from('matchup_participant')
+    .select('matchup_id')
+    .eq('user_id', appUser.id) as { data: { matchup_id: string }[] | null };
+  const matchupIds = [...new Set((mineRows ?? []).map(m => m.matchup_id))];
+  if (matchupIds.length === 0) return NextResponse.json({ ok: true, tallies: {} });
+
+  // Every participant of those matchups (to map participant → me/opponent)
+  const { data: parts } = await service
+    .from('matchup_participant')
+    .select('id, user_id, matchup_id')
+    .in('matchup_id', matchupIds) as {
+      data: { id: string; user_id: string; matchup_id: string }[] | null;
+    };
+
+  // Every pick across those matchups
+  const { data: picks } = await service
+    .from('pick')
+    .select('participant_id, fixture_id, side')
+    .in('matchup_id', matchupIds) as {
+      data: { participant_id: string; fixture_id: string; side: 'HOME' | 'AWAY' }[] | null;
+    };
+
+  // Finished fixtures referenced by those picks, plus their stage
+  const fixtureIds = [...new Set((picks ?? []).map(p => p.fixture_id))];
+  const { data: fixtures } = fixtureIds.length
+    ? await service
+        .from('fixture')
+        .select('id, home_score, away_score, home_pen_score, away_pen_score, status, round_id')
+        .in('id', fixtureIds)
+        .eq('status', 'FINAL') as {
+          data: { id: string; home_score: number | null; away_score: number | null; home_pen_score: number | null; away_pen_score: number | null; status: string; round_id: string }[] | null;
+        }
+    : { data: [] };
+
+  const roundIds = [...new Set((fixtures ?? []).map(f => f.round_id))];
+  const { data: rounds } = roundIds.length
+    ? await service.from('round').select('id, stage').in('id', roundIds) as {
+        data: { id: string; stage: string }[] | null;
+      }
+    : { data: [] };
+
+  const stageByRound = new Map((rounds ?? []).map(r => [r.id, r.stage]));
+  const fixtureById = new Map((fixtures ?? []).map(f => [f.id, f]));
+
+  // Points per participant across all their finished picks
+  const pointsByParticipant = new Map<string, number>();
+  for (const pk of picks ?? []) {
+    const f = fixtureById.get(pk.fixture_id);
+    if (!f) continue;
+    const stage = stageByRound.get(f.round_id) as StageName | undefined;
+    if (!stage) continue;
+    const pts = evaluatePick({
+      fixture: {
+        homeGoals: f.home_score ?? 0,
+        awayGoals: f.away_score ?? 0,
+        homePenalty: f.home_pen_score,
+        awayPenalty: f.away_pen_score,
+        status: 'FINAL',
+      },
+      pickedTeamSide: pk.side,
+      stage,
+      scoringConfig: WORLD_CUP_2026_SCORING,
+    });
+    pointsByParticipant.set(pk.participant_id, (pointsByParticipant.get(pk.participant_id) ?? 0) + pts);
+  }
+
+  // Assemble mine vs opp per matchup
+  const partsByMatchup = new Map<string, { id: string; user_id: string }[]>();
+  for (const p of parts ?? []) {
+    if (!partsByMatchup.has(p.matchup_id)) partsByMatchup.set(p.matchup_id, []);
+    partsByMatchup.get(p.matchup_id)!.push(p);
+  }
+
+  const tallies: Record<string, { mine: number; opp: number }> = {};
+  for (const mid of matchupIds) {
+    const ps = partsByMatchup.get(mid) ?? [];
+    const meP = ps.find(p => p.user_id === appUser.id);
+    const oppP = ps.find(p => p.user_id !== appUser.id);
+    tallies[mid] = {
+      mine: meP ? (pointsByParticipant.get(meP.id) ?? 0) : 0,
+      opp: oppP ? (pointsByParticipant.get(oppP.id) ?? 0) : 0,
+    };
+  }
+
+  return NextResponse.json({ ok: true, tallies });
+}

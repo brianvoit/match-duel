@@ -15,6 +15,7 @@ export type MatchEvent = {
   assist: string | null;
   type: 'Goal' | 'Card' | 'Subst' | 'Var';
   detail: string; // 'Normal Goal' | 'Penalty' | 'Own Goal' | 'Yellow Card' | 'Red Card' | 'Substitution 1' …
+  comments: string | null; // e.g. 'Penalty Shootout' — marks tie-break kicks
 };
 
 export type EventsData = {
@@ -68,6 +69,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
         assist: { name: string | null };
         type: string;
         detail: string;
+        comments: string | null;
       }>;
       errors?: Record<string, string>;
     };
@@ -84,6 +86,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       assist:      e.assist?.name ?? null,
       type:        e.type as MatchEvent['type'],
       detail:      e.detail,
+      comments:    e.comments ?? null,
     }));
 
     await setCached(id, 'events', { events } as unknown as Record<string, unknown>);

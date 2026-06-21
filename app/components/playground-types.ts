@@ -155,6 +155,7 @@ export type MatchEvent = {
   assist: string | null;
   type: 'Goal' | 'Card' | 'Subst' | 'Var';
   detail: string;
+  comments: string | null; // e.g. 'Penalty Shootout'
 };
 
 export type EventsData = {
@@ -188,12 +189,18 @@ export type LineupPlayer = {
   grid: string | null; // "row:col" e.g. "2:3"
 };
 
+export type UnavailablePlayer = {
+  name: string;
+  reason: string | null;   // e.g. "Knee Injury", "Suspended"
+};
+
 export type TeamLineup = {
   teamName: string;
   formation: string;   // e.g. "4-3-3"
   coachName: string | null;
   starters: LineupPlayer[];
   substitutes: LineupPlayer[];
+  unavailable: UnavailablePlayer[];
 };
 
 export type SquadData = {

@@ -34,7 +34,40 @@ function mapLineup(raw: ApiLineup): TeamLineup {
     coachName: raw.coach?.name ?? null,
     starters: raw.startXI.map(mapPlayer),
     substitutes: raw.substitutes.map(mapPlayer),
+    unavailable: [],
   };
+}
+
+// API-Football /injuries shape (players unavailable for the fixture)
+interface ApiInjury {
+  player: { name: string };
+  team: { name: string };
+  player_reason?: string | null;
+  reason?: string | null;
+}
+
+/** Fetch players unavailable for this fixture and split them by team name.
+ *  Best-effort: any failure just yields empty lists (the section hides). */
+async function fetchUnavailable(externalId: string, key: string, homeName: string, awayName: string) {
+  const empty = { home: [] as { name: string; reason: string | null }[], away: [] as { name: string; reason: string | null }[] };
+  try {
+    const res = await fetch(
+      `https://v3.football.api-sports.io/injuries?fixture=${externalId}`,
+      { headers: { 'x-apisports-key': key }, cache: 'no-store' }
+    );
+    const data = await res.json() as { response?: ApiInjury[]; errors?: Record<string, string> };
+    if (data.errors && Object.keys(data.errors).length > 0) return empty;
+    const home: { name: string; reason: string | null }[] = [];
+    const away: { name: string; reason: string | null }[] = [];
+    for (const item of data.response ?? []) {
+      const entry = { name: item.player.name, reason: item.reason ?? item.player_reason ?? null };
+      if (item.team.name === awayName) away.push(entry);
+      else home.push(entry);
+    }
+    return { home, away };
+  } catch {
+    return empty;
+  }
 }
 
 export async function GET(_req: NextRequest, context: RouteContext) {
@@ -81,7 +114,19 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const homeRaw = lineups.find(l => l.team.name === fixture.home_team) ?? lineups[0];
     const awayRaw = lineups.find(l => l.team.name === fixture.away_team) ?? lineups[1] ?? null;
 
-    const payload = { available: true, home: homeRaw ? mapLineup(homeRaw) : null, away: awayRaw ? mapLineup(awayRaw) : null };
+    const home = homeRaw ? mapLineup(homeRaw) : null;
+    const away = awayRaw ? mapLineup(awayRaw) : null;
+
+    // Players unavailable for this fixture (injured / suspended), split by team.
+    const unavailable = await fetchUnavailable(
+      fixture.external_provider_id, key,
+      home?.teamName ?? fixture.home_team,
+      away?.teamName ?? fixture.away_team,
+    );
+    if (home) home.unavailable = unavailable.home;
+    if (away) away.unavailable = unavailable.away;
+
+    const payload = { available: true, home, away };
     await setCached(id, 'lineup', payload as unknown as Record<string, unknown>);
     return NextResponse.json({ ok: true, ...payload });
   } catch {

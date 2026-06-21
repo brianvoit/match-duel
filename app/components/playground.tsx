@@ -276,6 +276,20 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     );
   }, [matchups, matchupOrder]);
 
+  // Per-matchup live duel tallies (mine vs opponent), shown next to each row in
+  // the mobile matchup drawer. One call returns every matchup's live score
+  // (settled + in-progress), matching the top scorebug.
+  const [matchupScores, setMatchupScores] = useState<Record<string, { mine: number; opp: number }>>({});
+  useEffect(() => {
+    if (!matchupDrawerOpen) return;
+    let cancelled = false;
+    fetch('/api/matchups/tallies', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(p => { if (!cancelled && p.ok) setMatchupScores(p.tallies ?? {}); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [matchupDrawerOpen]);
+
   function reorderMatchups(fromId: string, toId: string) {
     if (fromId === toId) return;
     const ids = orderedMatchups.map((m) => m.matchupId);
@@ -1649,15 +1663,19 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       );
     }
 
-    function renderLineup(lineup: NonNullable<SquadData['home']>) {
-      // Group starters by grid row
+    const home = squadData.home;
+    const away = squadData.away;
+
+    // Build formation lines ordered own-goal -> attack (GK first). For the away
+    // side we reverse so its attackers sit next to the home attackers at the
+    // halfway line, forming one continuous, opposing field.
+    function buildLines(lineup: NonNullable<SquadData['home']>, reverse: boolean) {
       const rows = new Map<number, typeof lineup.starters>();
       for (const p of lineup.starters) {
         const row = p.grid ? parseInt(p.grid.split(':')[0]) : 99;
         if (!rows.has(row)) rows.set(row, []);
         rows.get(row)!.push(p);
       }
-      // Sort within each row by column
       for (const [, players] of rows) {
         players.sort((a, b) => {
           const ca = a.grid ? parseInt(a.grid.split(':')[1]) : 0;
@@ -1665,62 +1683,120 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           return ca - cb;
         });
       }
-      const sortedRows = [...rows.entries()].sort(([a], [b]) => b - a); // GK (row 1) at bottom
+      const lines = [...rows.entries()].sort(([a], [b]) => a - b).map(([, players]) => players);
+      return reverse ? lines.reverse() : lines;
+    }
 
-      return (
-        <div className="wc-squad-team">
-          <div className="wc-squad-team-header">
-            <span className="wc-squad-team-flag">{teamFlag(lineup.teamName)}</span>
-            <div>
-              <h3 className="wc-squad-team-name">{lineup.teamName}</h3>
-              <span className="wc-squad-formation">{lineup.formation}</span>
-            </div>
-          </div>
+    const homeLines = home ? buildLines(home, false) : []; // GK → attack
+    const awayLines = away ? buildLines(away, true) : [];  // attack → GK
 
-          {/* Formation rows — GK at bottom */}
-          <div className="wc-squad-pitch">
-            {sortedRows.map(([rowNum, players]) => (
-              <div key={rowNum} className="wc-squad-row">
-                {players.map(p => (
-                  <div key={p.number} className="wc-squad-player">
-                    <div className={`wc-squad-player-num wc-squad-player-num--${p.pos.toLowerCase()}`}>
-                      {p.number}
-                    </div>
-                    <div className="wc-squad-player-name">
-                      {p.name.split(' ').pop()}
-                    </div>
-                  </div>
-                ))}
+    const renderHalf = (lines: ReturnType<typeof buildLines>, side: 'home' | 'away') => (
+      <div className={`wc-squad-field-half wc-squad-field-half--${side}`}>
+        {lines.map((line, i) => (
+          <div key={i} className="wc-squad-line">
+            {line.map(p => (
+              <div key={p.number} className="wc-squad-player">
+                <div className={`wc-squad-player-num wc-squad-player-num--${p.pos.toLowerCase()}`}>{p.number}</div>
+                <div className="wc-squad-player-name">{p.name.split(' ').pop()}</div>
               </div>
             ))}
           </div>
+        ))}
+      </div>
+    );
 
-          {/* Substitutes */}
-          {lineup.substitutes.length > 0 && (
-            <div className="wc-squad-subs">
-              <div className="wc-squad-subs-label">Substitutes</div>
-              <div className="wc-squad-subs-list">
-                {lineup.substitutes.map(p => (
-                  <div key={p.number} className="wc-squad-sub">
-                    <span className="wc-squad-sub-num">{p.number}</span>
-                    <span className="wc-squad-sub-name">{p.name}</span>
-                  </div>
-                ))}
-              </div>
+    // Coaches sit on the INNER edge of each header (toward the centre); team
+    // identity (flag + name + formation) stays on the outer edge.
+    const renderHead = (lineup: NonNullable<SquadData['home']>, side: 'home' | 'away') => (
+      <div className={`wc-squad-head wc-squad-head--${side}`}>
+        <div className="wc-squad-head-id">
+          <span className="wc-squad-head-flag">{teamFlag(lineup.teamName)}</span>
+          <div className="wc-squad-head-text">
+            <span className="wc-squad-head-name">{lineup.teamName}</span>
+            <span className="wc-squad-head-meta">{lineup.formation}</span>
+          </div>
+        </div>
+        {lineup.coachName && (
+          <div className="wc-squad-head-coach">
+            <span className="wc-squad-head-coach-name">{lineup.coachName}</span>
+          </div>
+        )}
+      </div>
+    );
+
+    const posLabel = (pos: string) => (
+      { g: 'Goalkeeper', d: 'Defender', m: 'Midfielder', f: 'Forward' }[pos.toLowerCase()] ?? pos
+    );
+
+    type PairItem = { key: string; num?: number; name: string; sub?: string | null };
+
+    const renderPairCell = (item: PairItem | undefined, side: 'home' | 'away') => (
+      <div className={`wc-squad-cell wc-squad-cell--${side}`}>
+        {item && (
+          <>
+            {item.num != null && <span className="wc-squad-cell-num">{item.num}</span>}
+            <div className="wc-squad-cell-info">
+              <span className="wc-squad-cell-name">
+                <span className="wc-name-full">{item.name}</span>
+                <span className="wc-name-last">{item.name.split(' ').pop()}</span>
+              </span>
+              {item.sub && <span className="wc-squad-cell-sub">{item.sub}</span>}
             </div>
-          )}
+          </>
+        )}
+      </div>
+    );
 
-          {lineup.coachName && (
-            <div className="wc-squad-coach">Coach: {lineup.coachName}</div>
-          )}
+    // Combined table — one row per pair, home on the left, away on the right.
+    const renderPairTable = (title: string, homeItems: PairItem[], awayItems: PairItem[]) => {
+      const n = Math.max(homeItems.length, awayItems.length);
+      if (n === 0) return null;
+      return (
+        <div className="wc-squad-table">
+          <div className="wc-squad-table-title">{title}</div>
+          <div className="wc-squad-table-rows">
+            {Array.from({ length: n }).map((_, i) => (
+              <div key={i} className="wc-squad-pair-row">
+                {renderPairCell(homeItems[i], 'home')}
+                {renderPairCell(awayItems[i], 'away')}
+              </div>
+            ))}
+          </div>
         </div>
       );
-    }
+    };
+
+    const homeUnavail = home?.unavailable ?? [];
+    const awayUnavail = away?.unavailable ?? [];
 
     return (
       <div className="wc-squad">
-        {squadData.home && renderLineup(squadData.home)}
-        {squadData.away && renderLineup(squadData.away)}
+        {/* Coaches / team identity on top */}
+        <div className="wc-squad-heads">
+          {home && renderHead(home, 'home')}
+          {away && renderHead(away, 'away')}
+        </div>
+
+        {/* One combined, opposing field */}
+        <div className="wc-squad-field">
+          {home && renderHalf(homeLines, 'home')}
+          <div className="wc-squad-halfway" aria-hidden="true" />
+          {away && renderHalf(awayLines, 'away')}
+        </div>
+
+        {/* Combined substitutes (home left, away right) */}
+        {renderPairTable(
+          'Substitutes',
+          (home?.substitutes ?? []).map(p => ({ key: `h${p.number}`, num: p.number, name: p.name, sub: posLabel(p.pos) })),
+          (away?.substitutes ?? []).map(p => ({ key: `a${p.number}`, num: p.number, name: p.name, sub: posLabel(p.pos) })),
+        )}
+
+        {/* Unavailable players */}
+        {renderPairTable(
+          'Unavailable',
+          homeUnavail.map((p, i) => ({ key: `hu${i}`, name: p.name, sub: p.reason })),
+          awayUnavail.map((p, i) => ({ key: `au${i}`, name: p.name, sub: p.reason })),
+        )}
       </div>
     );
   }
@@ -1762,14 +1838,20 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     const isFinal = selectedFixture.status === 'FINAL';
 
     // ── Timeline ────────────────────────────────────────────────────────────
-    const timeline = eventsData?.available ? eventsData.events : [];
+    const allEvents = eventsData?.available ? eventsData.events : [];
+    const isShootoutKick = (e: typeof allEvents[number]) =>
+      (e.comments ?? '').toLowerCase().includes('shootout');
+    // Shootout kicks are pulled out of the minute-by-minute timeline and shown in
+    // their own breakdown section.
+    const shootoutKicks = allEvents.filter(isShootoutKick);
+    const timeline = allEvents.filter(e => !isShootoutKick(e));
     const maxMinute = timeline.reduce((m, e) => Math.max(m, (e.minute ?? 0) + (e.extraMinute ?? 0)), 0);
 
     // ── Build enhanced timeline with period markers ────────────────
     type TLItem = (typeof timeline)[number] & { _periodLabel?: string };
     const enhancedTimeline: TLItem[] = [];
     const mkPeriod = (label: string, minute: number): TLItem =>
-      ({ type: 'PERIOD' as unknown as 'Var', _periodLabel: label, player: '', assist: null, detail: label, team: '', minute, extraMinute: null });
+      ({ type: 'PERIOD' as unknown as 'Var', _periodLabel: label, player: '', assist: null, detail: label, team: '', minute, extraMinute: null, comments: null });
 
     let halfAdded = false, fullAdded = false, et1Added = false;
 
@@ -1857,6 +1939,36 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       if (typeof v === 'number') return v;
       return parseFloat(String(v).replace('%', '')) || 0;
     }
+
+    // ── Penalty shootout breakdown ──────────────────────────────────────────
+    type Kick = { player: string; team: string; scored: boolean };
+    const shootout: Kick[] = shootoutKicks.map(e => ({
+      player: e.player,
+      team: e.team,
+      scored: !/miss|saved/i.test(e.detail),
+    }));
+
+    const homeKicks = shootout.filter(k => k.team === homeTeam);
+    const awayKicks = shootout.filter(k => k.team === awayTeam);
+    const shootoutRounds = Math.max(homeKicks.length, awayKicks.length);
+    const homePen = selectedFixture.homePenScore ?? homeKicks.filter(k => k.scored).length;
+    const awayPen = selectedFixture.awayPenScore ?? awayKicks.filter(k => k.scored).length;
+    const homePenWin = homePen > awayPen;
+
+    const KickMark = ({ scored }: { scored: boolean }) =>
+      scored ? (
+        <span className="wc-pk-mark wc-pk-mark--scored" aria-label="scored">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M2.5 6.5 L5 9 L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      ) : (
+        <span className="wc-pk-mark wc-pk-mark--missed" aria-label="missed">
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M3 3 L9 9 M9 3 L3 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </span>
+      );
 
     return (
       <div className="wc-recap">
@@ -1993,6 +2105,49 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           );
         })()}
 
+        {/* ── Penalty shootout breakdown ───────────────────────────────── */}
+        {shootout.length > 0 && (
+          <div className="wc-pk">
+            <div className="wc-pk-title">Penalty Shootout</div>
+            <div className="wc-pk-score">
+              <span className={`wc-pk-team${homePenWin ? ' wc-pk-team--win' : ''}`}>
+                {teamFlag(homeTeam ?? '')} {homeTeam}
+              </span>
+              <span className="wc-pk-score-num">{homePen}–{awayPen}</span>
+              <span className={`wc-pk-team wc-pk-team--right${!homePenWin ? ' wc-pk-team--win' : ''}`}>
+                {awayTeam} {teamFlag(awayTeam ?? '')}
+              </span>
+            </div>
+            <div className="wc-pk-rounds">
+              {Array.from({ length: shootoutRounds }).map((_, i) => {
+                const h = homeKicks[i];
+                const a = awayKicks[i];
+                return (
+                  <div key={i} className="wc-pk-round">
+                    <div className="wc-pk-kick wc-pk-kick--home">
+                      {h && (
+                        <>
+                          <KickMark scored={h.scored} />
+                          <span className="wc-pk-kick-name">{h.player.split(' ').pop()}</span>
+                        </>
+                      )}
+                    </div>
+                    <span className="wc-pk-round-num">{i + 1}</span>
+                    <div className="wc-pk-kick wc-pk-kick--away">
+                      {a && (
+                        <>
+                          <span className="wc-pk-kick-name">{a.player.split(' ').pop()}</span>
+                          <KickMark scored={a.scored} />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Stats may lag the timeline early in a match */}
         {!statsAvailable && (
           <p className="wc-subtitle" style={{ fontSize: '0.82rem', textAlign: 'center', margin: '8px 0' }}>
@@ -2128,7 +2283,10 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
               >
                 {/* Home — current user: name LEFT, avatar RIGHT */}
                 <div className="wc-h2h-player">
-                  <span className="wc-h2h-name">{myName}</span>
+                  <span className="wc-h2h-name">
+                    <span className="wc-h2h-name--full">{myName}</span>
+                    <span className="wc-h2h-name--first">{myName.split(' ')[0]}</span>
+                  </span>
                   {userAvatarUrl ? (
                     <img className="wc-h2h-avatar" src={userAvatarUrl} alt={myName} />
                   ) : (
@@ -2149,7 +2307,10 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
 
                 {/* Away — opponent */}
                 <div className="wc-h2h-player wc-h2h-player--right">
-                  <span className="wc-h2h-name">{oppName}</span>
+                  <span className="wc-h2h-name">
+                    <span className="wc-h2h-name--full">{oppName}</span>
+                    <span className="wc-h2h-name--first">{oppName.split(' ')[0]}</span>
+                  </span>
                   <div className="wc-avatar-presence-wrap">
                     {selectedMatchup?.opponentAvatarUrl ? (
                       <img className="wc-h2h-avatar" src={selectedMatchup.opponentAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
@@ -3066,10 +3227,17 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                           : <span style={{ background: avatarColor(m.opponentEmail), width: '100%', height: '100%', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.85rem' }}>{oppInit}</span>}
                       </div>
                       <div className="wc-matchup-lobby-info">
-                        <span className="wc-matchup-lobby-name">vs {oppName}</span>
+                        <span className="wc-matchup-lobby-name">
+                          {oppName.split(' ')[0]}
+                          {(() => {
+                            const sc = matchupScores[m.matchupId];
+                            if (!sc) return null;
+                            return <span className="wc-matchup-lobby-score"> ({sc.mine} - {sc.opp})</span>;
+                          })()}
+                        </span>
                       </div>
                       {isActive && (
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <svg className="wc-matchup-lobby-check" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                           <path d="M3 8l4 4 6-7" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       )}

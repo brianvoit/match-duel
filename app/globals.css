@@ -906,6 +906,9 @@ select {
   text-align: left;
 }
 
+/* First name shown only on mobile (see media query); full name is the default. */
+.wc-h2h-name--first { display: none; }
+
 /* Score block */
 .wc-h2h-score {
   display: flex;
@@ -974,8 +977,10 @@ select {
   .wc-topbar-brand-name--full  { display: none; }
   .wc-topbar-brand-name--short { display: inline; }
 
-  /* H2H scorebug: hide names, just show avatars + score */
-  .wc-h2h-name { display: none; }
+  /* H2H scorebug: show first name only (full name is desktop-only) */
+  .wc-h2h-name { max-width: 72px; }
+  .wc-h2h-name--full { display: none; }
+  .wc-h2h-name--first { display: inline; }
   .wc-h2h { padding: 4px 8px; gap: 6px; }
 }
 
@@ -3485,6 +3490,108 @@ select {
   padding: 12px 0;
 }
 
+/* ── Penalty shootout breakdown ─────────────────────────────────────────── */
+.wc-pk {
+  margin: 8px 14px 16px;
+  padding: 12px 12px 14px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wc-pk-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.wc-pk-score {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.wc-pk-team {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-pk-team--right { text-align: right; }
+.wc-pk-team--win { color: var(--text-0); font-weight: 800; }
+
+.wc-pk-score-num {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-0);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wc-pk-rounds {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wc-pk-round {
+  display: grid;
+  grid-template-columns: 1fr 24px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.wc-pk-round-num {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-2);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-pk-kick {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.wc-pk-kick--away {
+  flex-direction: row-reverse;
+}
+
+.wc-pk-kick-name {
+  font-size: 0.8rem;
+  color: var(--text-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-pk-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.wc-pk-mark--scored { background: var(--ok); }
+.wc-pk-mark--missed { background: var(--danger); }
+
 .wc-recap-header {
   display: flex;
   justify-content: space-between;
@@ -3588,65 +3695,166 @@ select {
 .wc-squad {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
   padding: 16px;
 }
 
-@media (min-width: 1024px) {
-  .wc-squad {
-    flex-direction: row;
-    align-items: flex-start;
-  }
-  .wc-squad-team { flex: 1; }
-}
-
-.wc-squad-team {
+/* ── Coaches / team identity on top ─────────────────────────────────────── */
+.wc-squad-heads {
   display: flex;
-  flex-direction: column;
   gap: 12px;
 }
 
-.wc-squad-team-header {
+.wc-squad-head {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;  /* identity outer, coach toward centre */
+  gap: 8px;
 }
 
-.wc-squad-team-flag {
-  font-size: 1.8rem;
+.wc-squad-head--away {
+  flex-direction: row-reverse;
+}
+
+.wc-squad-head-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wc-squad-head--away .wc-squad-head-id {
+  flex-direction: row-reverse;
+}
+
+.wc-squad-head-flag {
+  font-size: 1.6rem;
   line-height: 1;
+  flex-shrink: 0;
 }
 
-.wc-squad-team-name {
-  margin: 0 0 2px;
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-0);
-}
-
-.wc-squad-formation {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-2);
-  letter-spacing: 0.06em;
-}
-
-/* Formation pitch */
-.wc-squad-pitch {
+.wc-squad-head-text {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  background: color-mix(in srgb, #2d8a4e 90%, transparent 10%);
-  border-radius: var(--radius-lg);
-  padding: 16px 12px;
-  border: 1px solid rgba(255,255,255,0.1);
+  min-width: 0;
 }
 
-.wc-squad-row {
+.wc-squad-head--away .wc-squad-head-text {
+  align-items: flex-end;
+}
+
+.wc-squad-head-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.wc-squad-head-meta {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 0.02em;
+}
+
+/* Coach — sits on the inner edge of each header, toward the centre line. */
+.wc-squad-head-coach {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.wc-squad-head--away .wc-squad-head-coach {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.wc-squad-head-coach-name {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ── One combined, opposing field ───────────────────────────────────────── */
+/* Mobile: vertical — home half on top (GK→attack), away half below
+   (attack→GK), meeting at the halfway line. */
+.wc-squad-field {
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at center, rgba(255,255,255,0.10) 0 1px, transparent 2px),
+    linear-gradient(180deg, #2f9152 0%, #2a8049 100%);
+  border-radius: var(--radius-lg);
+  padding: 16px 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  min-height: 460px;
+}
+
+.wc-squad-field-half {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 10px;
+}
+
+.wc-squad-line {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+}
+
+/* Halfway line + centre circle */
+.wc-squad-halfway {
+  position: relative;
+  height: 0;
+  border-top: 2px solid rgba(255,255,255,0.35);
+  margin: 12px 4px;
+}
+
+.wc-squad-halfway::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Desktop: horizontal — home half on the left, away half on the right. */
+@media (min-width: 1024px) {
+  .wc-squad-field {
+    flex-direction: row;
+    min-height: 420px;
+  }
+  .wc-squad-field-half {
+    flex-direction: row;
+  }
+  .wc-squad-line {
+    flex-direction: column;
+  }
+  .wc-squad-halfway {
+    height: auto;
+    width: 0;
+    border-top: none;
+    border-left: 2px solid rgba(255,255,255,0.35);
+    margin: 4px 12px;
+  }
 }
 
 .wc-squad-player {
@@ -3679,62 +3887,115 @@ select {
 .wc-squad-player-name {
   font-size: 0.6rem;
   font-weight: 600;
-  color: rgba(255,255,255,0.9);
+  color: rgba(255,255,255,0.95);
   text-align: center;
-  max-width: 52px;
+  max-width: 56px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
-/* Substitutes */
-.wc-squad-subs {
+/* ── Combined two-column tables (subs, unavailable) ─────────────────────── */
+.wc-squad-table {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-.wc-squad-subs-label {
+.wc-squad-table-title {
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text-2);
+  text-align: center;
 }
 
-.wc-squad-subs-list {
+.wc-squad-table-rows {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
-.wc-squad-sub {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+/* One row = one box; home on the left, away on the right, split by a divider. */
+.wc-squad-pair-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   background: var(--glass);
   border-radius: var(--radius-sm);
-  font-size: 0.8rem;
+  overflow: hidden;
 }
 
-.wc-squad-sub-num {
-  font-weight: 700;
-  color: var(--text-2);
-  min-width: 20px;
-  text-align: right;
-  font-size: 0.72rem;
+.wc-squad-cell {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 40px;
+  padding: 5px 10px;
+  min-width: 0;
 }
 
-.wc-squad-sub-name {
+.wc-squad-cell--away {
+  flex-direction: row-reverse;
+  border-left: 1px solid var(--line);
+}
+
+/* Number badge — spans the full height of the name + position block. */
+.wc-squad-cell-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-width: 26px;
+  padding: 0 4px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 0.76rem;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.wc-squad-cell-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.wc-squad-cell--away .wc-squad-cell-info {
+  align-items: flex-end;
+}
+
+.wc-squad-cell-name {
   color: var(--text-0);
+  font-size: 0.84rem;
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.wc-squad-coach {
-  font-size: 0.75rem;
+.wc-squad-cell-sub {
+  font-size: 0.64rem;
   color: var(--text-2);
-  padding: 4px 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Player name: last name only on mobile, full name on tablet/desktop. */
+.wc-name-full { display: none; }
+.wc-name-last { display: inline; }
+
+@media (min-width: 768px) {
+  .wc-name-full { display: inline; }
+  .wc-name-last { display: none; }
 }
 
 .wc-fd-scorebug-group {
@@ -4788,6 +5049,15 @@ select {
     color: var(--text-0);
   }
 
+  /* Live duel score shown inline after the first name, e.g. "Marilynn (10 - 12)". */
+  .wc-matchup-lobby-score {
+    color: var(--text-2);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .wc-matchup-lobby-check { margin-left: auto; flex-shrink: 0; }
+
   .wc-matchup-lobby-sub {
     font-size: 0.75rem;
     color: var(--text-2);
@@ -4948,8 +5218,9 @@ select {
     position: fixed;
     top: var(--topbar-h);
     left: 0;
+    right: 0;
     bottom: 0;
-    width: min(80vw, 280px);
+    width: 100%;
     z-index: 30;
     background: var(--bg-0);
     box-shadow: 4px 0 32px rgba(0, 0, 0, 0.18);
