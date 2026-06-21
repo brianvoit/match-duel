@@ -78,10 +78,35 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       return NextResponse.json({ ok: true, available: false, reason: 'api_error', ...base });
     }
 
+    // The external provider id can be a stand-in whose real teams differ from
+    // our fixture's. Look up the API fixture's home/away team names so we can
+    // relabel each event's team to OUR fixture's teams (keeps the recap's
+    // home/away split correct).
+    let apiHome: string | null = null;
+    let apiAway: string | null = null;
+    try {
+      const fxRes = await fetch(
+        `https://v3.football.api-sports.io/fixtures?id=${fixture.external_provider_id}`,
+        { headers: { 'x-apisports-key': key }, cache: 'no-store' }
+      );
+      const fxData = await fxRes.json() as {
+        response?: Array<{ teams?: { home?: { name?: string }; away?: { name?: string } } }>;
+      };
+      apiHome = fxData.response?.[0]?.teams?.home?.name ?? null;
+      apiAway = fxData.response?.[0]?.teams?.away?.name ?? null;
+    } catch { /* fall back to name match */ }
+
+    const relabelTeam = (apiName: string): string => {
+      if (apiHome && apiName === apiHome) return fixture.home_team;
+      if (apiAway && apiName === apiAway) return fixture.away_team;
+      if (apiName === fixture.away_team) return fixture.away_team;
+      return fixture.home_team;
+    };
+
     const events: MatchEvent[] = (data.response ?? []).map(e => ({
       minute:      e.time.elapsed,
       extraMinute: e.time.extra ?? null,
-      team:        e.team.name,
+      team:        relabelTeam(e.team.name),
       player:      e.player.name,
       assist:      e.assist?.name ?? null,
       type:        e.type as MatchEvent['type'],

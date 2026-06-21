@@ -3785,6 +3785,13 @@ select {
   max-width: 100%;
 }
 
+/* On narrow screens cap the coach so the team name keeps priority (avoids
+   truncating "Mexico" to "Me…"). */
+@media (max-width: 600px) {
+  .wc-squad-head-coach { flex: 0 1 auto; min-width: 0; }
+  .wc-squad-head-coach-name { max-width: 68px; }
+}
+
 /* ── One combined, opposing field ───────────────────────────────────────── */
 /* Mobile: vertical — home half on top (GK→attack), away half below
    (attack→GK), meeting at the halfway line. */

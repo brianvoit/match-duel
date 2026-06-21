@@ -21,7 +21,11 @@ interface ApiLineup {
   substitutes: ApiPlayer[];
 }
 
-function mapLineup(raw: ApiLineup): TeamLineup {
+// `teamNameOverride` relabels the lineup to our fixture's team name. External
+// provider ids can be stand-ins whose real teams differ from the fixture's, so
+// we map by position (API returns home first) and relabel rather than trusting
+// the API team name.
+function mapLineup(raw: ApiLineup, teamNameOverride: string): TeamLineup {
   const mapPlayer = (p: ApiPlayer) => ({
     name: p.player.name,
     number: p.player.number,
@@ -29,7 +33,7 @@ function mapLineup(raw: ApiLineup): TeamLineup {
     grid: p.player.grid,
   });
   return {
-    teamName: raw.team.name,
+    teamName: teamNameOverride,
     formation: raw.formation,
     coachName: raw.coach?.name ?? null,
     starters: raw.startXI.map(mapPlayer),
@@ -111,17 +115,20 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       return NextResponse.json({ ok: true, available: false, reason: 'not_yet_available' } satisfies Partial<SquadData> & { ok: boolean });
     }
 
-    const homeRaw = lineups.find(l => l.team.name === fixture.home_team) ?? lineups[0];
-    const awayRaw = lineups.find(l => l.team.name === fixture.away_team) ?? lineups[1] ?? null;
+    // API-Football returns lineups in [home, away] order. Map by position and
+    // relabel to our fixture's teams.
+    const homeRaw = lineups[0] ?? null;
+    const awayRaw = lineups[1] ?? null;
 
-    const home = homeRaw ? mapLineup(homeRaw) : null;
-    const away = awayRaw ? mapLineup(awayRaw) : null;
+    const home = homeRaw ? mapLineup(homeRaw, fixture.home_team) : null;
+    const away = awayRaw ? mapLineup(awayRaw, fixture.away_team) : null;
 
-    // Players unavailable for this fixture (injured / suspended), split by team.
+    // Players unavailable for this fixture (injured / suspended). Split by the
+    // API's real team names, then assign to our home/away by position.
     const unavailable = await fetchUnavailable(
       fixture.external_provider_id, key,
-      home?.teamName ?? fixture.home_team,
-      away?.teamName ?? fixture.away_team,
+      homeRaw?.team.name ?? '',
+      awayRaw?.team.name ?? '',
     );
     if (home) home.unavailable = unavailable.home;
     if (away) away.unavailable = unavailable.away;

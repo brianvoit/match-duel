@@ -79,8 +79,10 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       return NextResponse.json({ ok: true, available: false, reason: 'no_stats', stats: [] });
     }
 
-    const homeTeamData = teams.find(t => t.team.name === fixture.home_team) ?? teams[0];
-    const awayTeamData = teams.find(t => t.team.name === fixture.away_team) ?? teams[1] ?? null;
+    // API-Football returns statistics in [home, away] order. Map by position and
+    // relabel to our fixture's teams (external ids can be stand-ins).
+    const homeTeamData = teams[0];
+    const awayTeamData = teams[1] ?? null;
 
     const homeMap = new Map(homeTeamData.statistics.map(s => [s.type, s.value]));
     const awayMap = new Map((awayTeamData?.statistics ?? []).map(s => [s.type, s.value]));
@@ -94,7 +96,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       }))
       .filter(s => s.home !== null || s.away !== null);
 
-    const payload = { available: true, homeTeam: homeTeamData.team.name, awayTeam: awayTeamData?.team.name ?? fixture.away_team, stats };
+    const payload = { available: true, homeTeam: fixture.home_team, awayTeam: fixture.away_team, stats };
     await setCached(id, 'stats', payload as unknown as Record<string, unknown>);
     return NextResponse.json({ ok: true, ...payload } satisfies RecapData & { ok: boolean });
   } catch {
