@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { MatchupRow, MatchupParticipantRow, TournamentRow } from '@/lib/supabase/types';
-import { initializeFirstRoundPickOrder } from '@/lib/supabase/pickOrder';
+import { initializeFirstRoundPickOrder, getStartingRoundId } from '@/lib/supabase/pickOrder';
 
 function buildInviteCode(length = 6): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -125,7 +125,8 @@ export interface AcceptInviteResult {
 export type AcceptInviteError =
   | { error: 'not_found' }
   | { error: 'not_active' }
-  | { error: 'full' };
+  | { error: 'full' }
+  | { error: 'no_round_available' };
 
 export async function acceptMatchupInvite(
   rawInviteCode: string,
@@ -159,6 +160,12 @@ export async function acceptMatchupInvite(
     .eq('matchup_id', matchup.id);
 
   if ((totalCount ?? 0) >= 2) return { error: 'full' };
+
+  // A new matchup must start in a round whose fixtures haven't kicked off yet.
+  // Mid-tournament (e.g. group stage in progress, knockout bracket not yet
+  // scheduled) there's no such round, so block forming the matchup until there is.
+  const startingRoundId = await getStartingRoundId(matchup.tournament_id);
+  if (!startingRoundId) return { error: 'no_round_available' };
 
   const { data: newParticipant, error: joinError } = await service
     .from('matchup_participant')

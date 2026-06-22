@@ -1,7 +1,7 @@
 import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
-import { resolveTournamentForUserContext, getCurrentRoundForTournament, getRoundFixturesForUser } from '@/lib/supabase/rounds';
+import { resolveTournamentForUserContext, getRoundContextForMatchup, getRoundFixturesForUser } from '@/lib/supabase/rounds';
 
 export async function GET(
   _request: NextRequest,
@@ -38,7 +38,7 @@ export async function GET(
       appUserId: appUser.id
     });
 
-    const { current: currentRound, rounds } = await getCurrentRoundForTournament(tournamentId);
+    const { current: currentRound, rounds } = await getRoundContextForMatchup({ tournamentId, matchupId });
 
     if (!currentRound) {
       return NextResponse.json({

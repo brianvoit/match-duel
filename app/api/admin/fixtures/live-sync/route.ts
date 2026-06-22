@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchApiFootballFixtures, mapToProviderFixtures, WC_LEAGUE_ID, ApiFootballRateLimitError } from '@/lib/jobs/apiFootballClient';
 import { runFixtureSync } from '@/lib/jobs/fixtureSync';
 import { runRoundTransitions, runLockedPickDefaults } from '@/lib/jobs/roundTransitions';
+import { ensureBracketSeeded, runBracketResolution, reconcileBracketFromApi } from '@/lib/jobs/resolveBracket';
 import { invalidateCache } from '@/lib/jobs/fixtureApiCache';
 import { notifyMatchFinished } from '@/lib/jobs/notifyMatchFinished';
 import { createServiceRoleClient } from '@/lib/supabase/service';
@@ -137,6 +138,13 @@ export async function POST(req: NextRequest) {
     // 6. Settle any rounds that are now complete
     const transitions = await runRoundTransitions({ tournamentId: tournament.id });
 
+    // 7. Knockout bracket: ensure the skeleton exists, fill teams from results
+    //    so far (computed), then reconcile against the real API draw (authoritative
+    //    once published). All idempotent and safe to run every tick.
+    const bracketSeed = await ensureBracketSeeded({ tournamentId: tournament.id });
+    const bracket = await runBracketResolution({ tournamentId: tournament.id });
+    const bracketApi = await reconcileBracketFromApi({ tournamentId: tournament.id });
+
     return NextResponse.json({
       ok: true,
       season,
@@ -145,6 +153,7 @@ export async function POST(req: NextRequest) {
       sync: syncResult,
       lockedDefaults,
       transitions,
+      bracket: { ...bracketSeed, ...bracket, ...bracketApi },
     });
   } catch (err) {
     // Per-minute rate limit: skip this run cleanly (200) so the cron doesn't

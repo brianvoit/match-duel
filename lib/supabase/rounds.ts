@@ -129,6 +129,65 @@ export async function resolveTournamentForUserContext(input: {
   return latest.id;
 }
 
+/**
+ * Round context scoped to a specific matchup. A matchup only "participates" in
+ * a round once it has pick-order assignments for it, so a matchup formed mid-
+ * tournament participates from its starting round onward (e.g. Round of 32) and
+ * not in the rounds that ran before it joined.
+ *
+ * `current` is the earliest participating round that isn't complete. Every round
+ * is tagged with `participating` so the feed can show earlier rounds read-only.
+ */
+export async function getRoundContextForMatchup(input: {
+  tournamentId: string;
+  matchupId: string;
+}) {
+  const service = createServiceRoleClient();
+
+  const { data: rounds, error } = await service
+    .from('round')
+    .select('id, stage, order_index, starts_at, ends_at, is_complete, tournament_id')
+    .eq('tournament_id', input.tournamentId)
+    .order('order_index', { ascending: true }) as {
+    data: RoundRow[] | null;
+    error: { message: string } | null;
+  };
+
+  if (error) {
+    throw new Error(`Failed to list rounds: ${error.message}`);
+  }
+
+  const { data: assignments, error: assignError } = await service
+    .from('pick_order_assignment')
+    .select('round_id')
+    .eq('matchup_id', input.matchupId) as {
+    data: Array<{ round_id: string }> | null;
+    error: { message: string } | null;
+  };
+
+  if (assignError) {
+    throw new Error(`Failed to load matchup pick order: ${assignError.message}`);
+  }
+
+  const participatingRoundIds = new Set((assignments ?? []).map((a) => a.round_id));
+
+  const sorted = (rounds ?? []).map((round) => ({
+    ...round,
+    participating: participatingRoundIds.has(round.id),
+  }));
+
+  let current =
+    sorted.find((round) => round.participating && !round.is_complete) ?? null;
+
+  // No pick order yet (e.g. a solo matchup before the opponent joins): preview
+  // the tournament's current round read-only so the feed isn't blank.
+  if (!current && participatingRoundIds.size === 0) {
+    current = sorted.find((round) => !round.is_complete) ?? null;
+  }
+
+  return { current, rounds: sorted };
+}
+
 export async function getCurrentRoundForTournament(tournamentId: string) {
   const service = createServiceRoleClient();
   const { data: rounds, error } = await service

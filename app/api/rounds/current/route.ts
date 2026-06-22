@@ -1,7 +1,7 @@
 import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getCurrentRoundForTournament, resolveTournamentForUserContext } from '@/lib/supabase/rounds';
+import { getCurrentRoundForTournament, getRoundContextForMatchup, resolveTournamentForUserContext } from '@/lib/supabase/rounds';
 
 const querySchema = z.object({
   matchupId: z.string().uuid().optional(),
@@ -31,7 +31,12 @@ export async function GET(request: NextRequest) {
       tournamentYear: parsed.data.tournamentYear
     });
 
-    const { current, rounds } = await getCurrentRoundForTournament(tournamentId);
+    // When a matchup is in context, scope the current round to that matchup so
+    // a matchup formed mid-tournament starts at its own round (e.g. R32) rather
+    // than the tournament-wide current round.
+    const { current, rounds } = parsed.data.matchupId
+      ? await getRoundContextForMatchup({ tournamentId, matchupId: parsed.data.matchupId })
+      : await getCurrentRoundForTournament(tournamentId);
 
     return NextResponse.json({
       ok: true,

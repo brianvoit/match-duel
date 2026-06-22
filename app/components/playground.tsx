@@ -867,11 +867,14 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     const rounds = (roundPayload.rounds as Round[] | null) ?? [];
     setAllRounds(rounds);
 
-    // Background-fetch fixtures for every completed round so they show in the feed
-    const completedRounds = rounds.filter(r => r.is_complete);
-    if (completedRounds.length > 0) {
+    // Background-fetch fixtures for every OTHER round so the whole bracket shows
+    // in the feed read-only: earlier rounds (history, or rounds a late matchup
+    // didn't play) and future rounds (the knockout bracket filling in as group /
+    // knockout results land — visible to everyone, early or late).
+    const otherRounds = rounds.filter(r => r.id !== round?.id);
+    if (otherRounds.length > 0) {
       Promise.all(
-        completedRounds.map(async (r) => {
+        otherRounds.map(async (r) => {
           const url = matchupId
             ? `/api/rounds/${r.id}/fixtures?matchupId=${matchupId}`
             : `/api/rounds/${r.id}/fixtures`;
@@ -2713,7 +2716,14 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
             ) : (
               allRounds.map((round) => {
                 const isCurrentRound = round.id === currentRound?.id;
-                const isFutureRound = !round.is_complete && !isCurrentRound;
+                const isEarlier = currentRound ? round.order_index < currentRound.order_index : false;
+                const isFutureRound = currentRound
+                  ? round.order_index > currentRound.order_index
+                  : (!round.is_complete && !isCurrentRound);
+                // Rounds a late-joining matchup didn't play (earlier + not participated)
+                // are greyed and tagged. Future rounds aren't — they're the upcoming
+                // bracket, shown to everyone as it fills in.
+                const beforeJoin = selectedMatchupId != null && round.participating === false && isEarlier;
                 // null = still fetching; [] = loaded but empty
                 const roundFixtures: Fixture[] | null = isCurrentRound
                   ? visibleFixtures
@@ -2722,10 +2732,11 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 if (filterStage && round.stage !== filterStage) return null;
 
                 return (
-                  <div key={round.id} className="wc-round-section">
+                  <div key={round.id} className={`wc-round-section${beforeJoin ? ' wc-round-section--readonly' : ''}`}>
                     {/* Sticky round header */}
                     <div className="wc-round-section-header">
                       <h2 className="wc-round-section-title">{fmtStage(round.stage)}</h2>
+                      {beforeJoin && <span className="wc-round-section-tag">Before you joined</span>}
                       {round.starts_at && (
                         <span className="wc-round-section-date">
                           {new Date(round.starts_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
@@ -2736,14 +2747,14 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                       )}
                     </div>
 
-                    {/* Fixtures, loading, or TBD placeholder */}
-                    {isFutureRound ? (
-                      <div className="wc-round-tbd">Fixtures TBD</div>
-                    ) : roundFixtures === null ? (
+                    {/* Fixtures, loading, or TBD placeholder. Future rounds now show
+                        the bracket (placeholders filling in) once seeded — TBD only
+                        when a round genuinely has no fixtures. */}
+                    {roundFixtures === null ? (
                       <div className="wc-round-tbd" style={{ opacity: 0.5 }}>Loading…</div>
                     ) : roundFixtures.length === 0 ? (
                       <div className="wc-round-tbd">
-                        {hasFilters && isCurrentRound ? 'No fixtures match the filter.' : 'No fixtures yet.'}
+                        {hasFilters && isCurrentRound ? 'No fixtures match the filter.' : isFutureRound ? 'Fixtures TBD' : 'No fixtures yet.'}
                       </div>
                     ) : (() => {
                         // Tournament day 1 = June 11 2026, in the viewer's LOCAL time — each

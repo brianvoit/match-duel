@@ -21,11 +21,12 @@ export async function POST(_request: Request, context: RouteContext) {
     const result = await acceptMatchupInvite(inviteCode, appUser.id);
 
     if ('error' in result) {
-      const statusMap = { not_found: 404, not_active: 409, full: 409 } as const;
+      const statusMap = { not_found: 404, not_active: 409, full: 409, no_round_available: 409 } as const;
       const messages = {
         not_found: 'Invite not found.',
         not_active: 'Matchup is not active.',
-        full: 'This head-to-head matchup already has two participants.'
+        full: 'This head-to-head matchup already has two participants.',
+        no_round_available: 'New matchups can’t start right now — the next round’s fixtures haven’t been scheduled yet. Try again once the next round is set.'
       };
       return NextResponse.json(
         { ok: false, error: messages[result.error] },

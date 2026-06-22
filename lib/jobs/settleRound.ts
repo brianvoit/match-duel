@@ -115,6 +115,19 @@ export async function runRoundSettlement(input: {
       continue;
     }
 
+    // Only settle matchups that actually participate in this round. A matchup
+    // formed mid-tournament has no pick order for earlier rounds, so it must not
+    // get a (0–0) round result for rounds it never played.
+    const { count: pickOrderCount } = await service
+      .from('pick_order_assignment')
+      .select('*', { count: 'exact', head: true })
+      .eq('matchup_id', matchup.id)
+      .eq('round_id', input.roundId);
+
+    if (!pickOrderCount) {
+      continue;
+    }
+
     const roundResultRows = [];
 
     for (const participant of typedParticipants) {

@@ -30,8 +30,56 @@ export async function getPickOrderForRound(
 }
 
 /**
- * Called once when the second player joins a matchup.
- * Assigns alternating pick order for Round 1 fixtures, with the joiner picking first.
+ * Find the round a newly-formed matchup should start picking in: the earliest
+ * round whose fixtures are ALL still in the future. Before the tournament this
+ * is the first round (group stage); once it's underway a late-joining matchup
+ * starts at the next round that hasn't kicked off yet (e.g. Round of 32).
+ */
+async function findStartingRound(
+  service: ReturnType<typeof createServiceRoleClient>,
+  tournamentId: string,
+): Promise<{ id: string } | null> {
+  const { data: rounds } = await service
+    .from('round')
+    .select('id, order_index')
+    .eq('tournament_id', tournamentId)
+    .order('order_index', { ascending: true }) as {
+      data: Array<{ id: string; order_index: number }> | null;
+    };
+
+  const nowMs = Date.now();
+  for (const round of rounds ?? []) {
+    const { data: firstFixture } = await service
+      .from('fixture')
+      .select('starts_at')
+      .eq('round_id', round.id)
+      .order('starts_at', { ascending: true })
+      .limit(1)
+      .maybeSingle<{ starts_at: string | null }>();
+    // A round is "not started" iff its earliest fixture is still in the future.
+    if (firstFixture?.starts_at && new Date(firstFixture.starts_at).getTime() > nowMs) {
+      return { id: round.id };
+    }
+  }
+  return null;
+}
+
+/**
+ * The id of the round a new matchup would start in right now, or null if none is
+ * available yet (e.g. mid-group-stage before the knockout bracket is scheduled).
+ * Used to block forming a matchup until its starting round's fixtures exist.
+ */
+export async function getStartingRoundId(tournamentId: string): Promise<string | null> {
+  const service = createServiceRoleClient();
+  const round = await findStartingRound(service, tournamentId);
+  return round?.id ?? null;
+}
+
+/**
+ * Called once when the second player joins a matchup. Assigns alternating pick
+ * order (joiner picks first) for the matchup's starting round — the next round
+ * that hasn't kicked off yet, so matchups formed mid-tournament begin at the
+ * upcoming round rather than retroactively at the group stage.
  */
 export async function initializeFirstRoundPickOrder(input: {
   matchupId: string;
@@ -41,16 +89,9 @@ export async function initializeFirstRoundPickOrder(input: {
 }): Promise<void> {
   const service = createServiceRoleClient();
 
-  const { data: firstRound, error: roundError } = await service
-    .from('round')
-    .select('id')
-    .eq('tournament_id', input.tournamentId)
-    .eq('is_complete', false)
-    .order('order_index', { ascending: true })
-    .limit(1)
-    .maybeSingle<{ id: string }>();
+  const firstRound = await findStartingRound(service, input.tournamentId);
 
-  if (roundError || !firstRound) {
+  if (!firstRound) {
     return;
   }
 

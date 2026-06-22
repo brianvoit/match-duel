@@ -48,4 +48,8 @@ export const serverEnv = {
   get API_FOOTBALL_SEASON(): number {
     return parseInt(process.env.API_FOOTBALL_SEASON ?? '2026', 10);
   },
+  /** Set to 'off' to disable API-first knockout reconciliation (kill-switch). */
+  get BRACKET_API_RECONCILE(): string {
+    return process.env.BRACKET_API_RECONCILE ?? 'on';
+  },
 };

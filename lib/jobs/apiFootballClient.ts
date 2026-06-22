@@ -83,7 +83,7 @@ function mapStatus(
  * WC 2022 examples: "Group Stage - 1", "Round of 16", "Quarter-finals"
  * WC 2026 additions: "Round of 32"
  */
-function apiRoundToStage(round: string): string | null {
+export function apiRoundToStage(round: string): string | null {
   if (round.startsWith('Group Stage')) return 'GROUP';
   if (round === 'Round of 32') return 'ROUND_OF_32';
   if (round === 'Round of 16') return 'ROUND_OF_16';

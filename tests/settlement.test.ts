@@ -45,6 +45,11 @@ function makeSupabaseMock(overrides: Record<string, unknown[]> = {}) {
     ],
     round_result: [] as Array<{ matchup_id: string; round_id: string; participant_id: string; points: number; tiebreak_goals: number; settled_at: string }>,
     matchup_standing: [],
+    // The matchup participates in this round (has pick order) — required for settlement.
+    pick_order_assignment: [
+      { matchup_id: MATCHUP_ID, round_id: ROUND_ID, fixture_id: FIXTURE_1, first_picker_participant_id: PARTICIPANT_A },
+      { matchup_id: MATCHUP_ID, round_id: ROUND_ID, fixture_id: FIXTURE_2, first_picker_participant_id: PARTICIPANT_B }
+    ],
     ...overrides
   };
 
@@ -57,7 +62,10 @@ function makeSupabaseMock(overrides: Record<string, unknown[]> = {}) {
     };
 
     const chain = {
-      select: () => chain,
+      select: (_cols?: unknown, opts?: { count?: string; head?: boolean }) => {
+        if (opts?.count) state.filters['__count'] = true;
+        return chain;
+      },
       eq: (col: string, val: unknown) => {
         state.filters[col] = val;
         return chain;
@@ -86,7 +94,10 @@ function makeSupabaseMock(overrides: Record<string, unknown[]> = {}) {
       insert: () => chain,
       then: (resolve: (v: unknown) => void) => {
         const data = getTableData();
-        return Promise.resolve({ data, error: null }).then(resolve);
+        const result = state.filters['__count']
+          ? { data: null, count: data.length, error: null }
+          : { data, error: null };
+        return Promise.resolve(result).then(resolve);
       }
     };
 
@@ -98,6 +109,7 @@ function makeSupabaseMock(overrides: Record<string, unknown[]> = {}) {
       const rows = tables[tableName] ?? [];
       return rows.filter((row) => {
         for (const [key, value] of Object.entries(state.filters)) {
+          if (key === '__count') continue;
           if ((row as Record<string, unknown>)[key] !== value) return false;
         }
         return true;

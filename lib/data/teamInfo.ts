@@ -111,6 +111,16 @@ export function teamCode(teamName: string): string {
   if (teamName.startsWith('TBD')) return 'TBD';
   if (teamName.startsWith('Winner UEFA')) return 'UPO';
   if (teamName.startsWith('Winner FIFA')) return 'FPO';
+  // Knockout bracket placeholders → compact bracket notation (1A, 2B, 3RD, M73…).
+  const winGroup = teamName.match(/^Winner Group ([A-L])$/);
+  if (winGroup) return `1${winGroup[1]}`;
+  const runGroup = teamName.match(/^Runner-up Group ([A-L])$/);
+  if (runGroup) return `2${runGroup[1]}`;
+  if (teamName === '3rd Place') return '3RD';
+  const winMatch = teamName.match(/^Winner (\w+)$/);
+  if (winMatch) return winMatch[1].toUpperCase();
+  const loseMatch = teamName.match(/^Loser (\w+)$/);
+  if (loseMatch) return loseMatch[1].toUpperCase();
   return teamName.slice(0, 3).toUpperCase();
 }
 

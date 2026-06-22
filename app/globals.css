@@ -1892,6 +1892,27 @@ select {
   margin-top: 8px;
 }
 
+/* Rounds the selected matchup didn't play (it was formed mid-tournament) —
+   shown read-only and dimmed. The header stays legible. */
+.wc-round-section--readonly .wc-scorebug {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.wc-round-section-tag {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-2);
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  margin-left: auto;
+  margin-right: 8px;
+}
+
 .wc-round-section-header {
   position: sticky;
   top: 0;

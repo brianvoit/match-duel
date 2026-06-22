@@ -25,6 +25,9 @@ export type Round = {
   is_complete: boolean;
   starts_at?: string | null;
   ends_at?: string | null;
+  /** Whether the selected matchup participates in this round (has pick order).
+   *  Earlier rounds a late-joining matchup didn't play are shown read-only. */
+  participating?: boolean;
 };
 
 export type Fixture = {
