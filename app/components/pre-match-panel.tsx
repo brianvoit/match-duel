@@ -108,12 +108,15 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
             ].filter(({ list }) => list.length > 0).map(({ team, list }) => (
               <div key={team} className="wc-pm-injury-team">
                 <div className="wc-pm-injury-team-name">{teamFlag(team)} {team}</div>
-                {list.map((inj, i) => (
-                  <div key={i} className={`wc-pm-injury wc-pm-injury--${inj.type.toLowerCase().replace(' ', '-')}`}>
-                    <span className="wc-pm-injury-name">{inj.playerName}</span>
-                    <span className="wc-pm-injury-type">{inj.type}</span>
-                  </div>
-                ))}
+                {list.map((inj, i) => {
+                  const type = inj.type || 'Injured';
+                  return (
+                    <div key={i} className={`wc-pm-injury wc-pm-injury--${type.toLowerCase().replace(' ', '-')}`}>
+                      <span className="wc-pm-injury-name">{inj.playerName}</span>
+                      <span className="wc-pm-injury-type">{type}</span>
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </div>

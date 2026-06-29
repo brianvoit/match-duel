@@ -249,11 +249,14 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   if (Array.isArray(injRaw) && injRaw.length) {
     const mapInj = (teamName: string): InjuryEntry[] =>
       injRaw
-        .filter((i: { team: { name: string } }) => i.team.name === teamName)
-        .map((i: { player: { name: string }; type: string; reason: string }) => ({
-          playerName: i.player.name,
-          type: i.type,
-          reason: i.reason ?? '',
+        .filter((i: { team?: { name?: string } }) => i?.team?.name === teamName)
+        .map((i: { player?: { name?: string; type?: string; reason?: string }; type?: string; reason?: string }) => ({
+          // API-Football nests type/reason under `player` in some payloads; fall
+          // back to top-level fields and a sensible default so the client never
+          // receives an undefined type (which crashed PreMatchPanel.toLowerCase).
+          playerName: i?.player?.name ?? 'Unknown',
+          type: i?.player?.type ?? i?.type ?? 'Injured',
+          reason: i?.player?.reason ?? i?.reason ?? '',
         }));
     injuries = { home: mapInj(fixture.home_team), away: mapInj(fixture.away_team) };
   }
