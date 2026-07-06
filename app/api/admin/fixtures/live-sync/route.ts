@@ -73,15 +73,19 @@ export async function POST(req: NextRequest) {
       ]);
       apiFixtures = mergeById(todayRaw, liveRaw);
 
-      // Safety net: settle any fixture still marked LIVE in our DB that the feeds
-      // above didn't return (e.g. it ended on a previous UTC day and the FINAL
-      // transition was missed) by fetching its current state directly by id.
+      // Safety net: settle any fixture the feeds above didn't return but that
+      // should have a result by now, by fetching its current state directly by id:
+      //   - still marked LIVE (ended on a previous UTC day, FINAL transition missed)
+      //   - still SCHEDULED yet already past kickoff (e.g. it kicked off and
+      //     finished during an API outage, so it never advanced to LIVE and the
+      //     incremental "today + live" feeds no longer cover it).
+      const nowIso = new Date().toISOString();
       const covered = new Set(apiFixtures.map((f) => String(f.fixture.id)));
       const { data: stuckLive } = await service
         .from('fixture')
         .select('external_provider_id')
-        .eq('status', 'LIVE')
-        .not('external_provider_id', 'is', null) as { data: Array<{ external_provider_id: string | null }> | null };
+        .not('external_provider_id', 'is', null)
+        .or(`status.eq.LIVE,and(status.eq.SCHEDULED,starts_at.lt.${nowIso})`) as { data: Array<{ external_provider_id: string | null }> | null };
       const stuckIds = (stuckLive ?? [])
         .map((r) => r.external_provider_id)
         .filter((id): id is string => Boolean(id) && !covered.has(id as string));

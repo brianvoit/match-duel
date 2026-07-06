@@ -54,12 +54,6 @@ interface PlaygroundProps {
 const TOURNAMENT_CATALOGUE = [
   { id: 'wc-mens-2026',   label: "World Cup '26",         active: true  },
   { id: 'wc-womens-2027', label: "Women's World Cup '27", active: false },
-  { id: 'wc-mens-2022',   label: "World Cup '22",         active: false },
-  { id: 'wc-womens-2023', label: "Women's World Cup '23", active: false },
-  { id: 'wc-mens-2018',   label: "World Cup '18",         active: false },
-  { id: 'wc-womens-2019', label: "Women's World Cup '19", active: false },
-  { id: 'wc-mens-2014',   label: "World Cup '14",         active: false },
-  { id: 'wc-womens-2015', label: "Women's World Cup '15", active: false },
 ];
 
 // Utilities imported from playground-utils.tsx
@@ -1173,6 +1167,16 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     }
 
     const f = selectedFixture;
+    // Picks for a later round stay locked until the current round is settled
+    // (the server also enforces this — see picks.ts round-gating). Once the
+    // current round settles, it advances and this fixture's round becomes current.
+    // Fixture → round is resolved by membership: current-round fixtures live in
+    // `fixtures`; other rounds in `completedRoundFixtures` (keyed by round id).
+    const fRoundId = fixtures.some((x) => x.id === f.id)
+      ? currentRound?.id
+      : Object.keys(completedRoundFixtures).find((rid) => completedRoundFixtures[rid]?.some((x) => x.id === f.id));
+    const fRound = allRounds.find((r) => r.id === fRoundId);
+    const isFutureRoundPick = !!(fRound && currentRound && fRound.order_index > currentRound.order_index);
     const myPoints = computePickPoints(f, pickMap[f.id] ?? f.myPickSide, stage);
     const firstPickerId = pickOrder[f.id];
     const iPickFirst =
@@ -1217,7 +1221,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 )}
               </div>
               <h2 className="wc-fd-scorebug-name">{f.homeTeam}</h2>
-              <ScoreBugForm form={preMatchData?.predictions?.homeForm ?? ''} />
+              <ScoreBugForm form={preMatchData?.homeForm ?? ''} />
             </div>
 
             {/* Score center */}
@@ -1268,7 +1272,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 )}
               </div>
               <h2 className="wc-fd-scorebug-name">{f.awayTeam}</h2>
-              <ScoreBugForm form={preMatchData?.predictions?.awayForm ?? ''} />
+              <ScoreBugForm form={preMatchData?.awayForm ?? ''} />
             </div>
           </div>
         </div>
@@ -1289,7 +1293,12 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
               <div className="wc-fd-section">
                 <h3 className="wc-fd-section-label">Who will win?</h3>
 
-                {f.isLocked ? (
+                {isFutureRoundPick ? (
+                  /* Next round(s) stay locked until the current round is settled */
+                  <p className="wc-pick-hint wc-pick-hint--locked" style={{ margin: '0 0 6px' }}>
+                    🔒 Picks open once {currentRound ? fmtStage(currentRound.stage) : 'the current round'} is settled.
+                  </p>
+                ) : f.isLocked ? (
                   /* Post-kickoff: show picks with chose/assigned context */
                   <div className="wc-fd-locked-picks">
                     <div className="wc-fd-locked-pick">

@@ -136,6 +136,11 @@ export type StyleComparison = {
 export type PreMatchData = {
   homeTeam: string;
   awayTeam: string;
+  // W/D/L form strings (oldest → newest), computed from recent fixtures and
+  // surfaced independently of `predictions` so they populate even when the
+  // API-Football predictions endpoint returns nothing for a fixture.
+  homeForm:     string;
+  awayForm:     string;
   predictions:  PreMatchPredictions | null;
   standings:    { group: string; rows: GroupStandingRow[] } | null;
   homeGoals:    TeamGoals | null;
