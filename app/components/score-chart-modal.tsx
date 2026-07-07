@@ -123,11 +123,13 @@ export function ScoreChartModal({
     ? (completedRoundFixtures[groupRound.id] ?? fixtures)
     : fixtures;
 
-  // Group by tournament playing-day (matches the fixture list's MD numbering),
-  // not the API's per-group matchday (1-3).
+  // Group the group stage by its 3 matchdays (each team plays 3 group games),
+  // not by calendar playing-day — otherwise the ~17 group-stage days dominate the
+  // x-axis and the knockout rounds (where the tournament has progressed to) get
+  // squeezed into the far right. Falls back to the playing-day if matchday is null.
   const mdGroups = new Map<number, Fixture[]>();
   for (const f of groupFixtures) {
-    const md = tournamentMatchday(f.startsAt);
+    const md = f.matchday ?? tournamentMatchday(f.startsAt);
     if (!mdGroups.has(md)) mdGroups.set(md, []);
     mdGroups.get(md)!.push(f);
   }
@@ -337,7 +339,10 @@ export function ScoreChartModal({
 
           <div className="wc-h2h wc-h2h--nav">
             <div className="wc-h2h-player">
-              <span className="wc-h2h-name">{myName}</span>
+              <span className="wc-h2h-name">
+                <span className="wc-h2h-name--full">{myName}</span>
+                <span className="wc-h2h-name--first">{myName.split(' ')[0]}</span>
+              </span>
               {userAvatarUrl
                 ? <img className="wc-h2h-avatar" src={userAvatarUrl} alt={myName} referrerPolicy="no-referrer" />
                 : <span className="wc-h2h-avatar wc-h2h-avatar--me" style={{ background: avatarColor(userEmail) }}>{myInit}</span>}
@@ -348,7 +353,10 @@ export function ScoreChartModal({
               <span className={oppPts > myPts ? 'wc-h2h-pts--leading' : oppPts < myPts ? 'wc-h2h-pts--trailing' : ''}>{oppPts}</span>
             </div>
             <div className="wc-h2h-player wc-h2h-player--right">
-              <span className="wc-h2h-name">{oppName}</span>
+              <span className="wc-h2h-name">
+                <span className="wc-h2h-name--full">{oppName}</span>
+                <span className="wc-h2h-name--first">{oppName.split(' ')[0]}</span>
+              </span>
               {oppAvatarUrl
                 ? <img className="wc-h2h-avatar" src={oppAvatarUrl} alt={oppName} referrerPolicy="no-referrer" />
                 : <span className="wc-h2h-avatar wc-h2h-avatar--opp" style={{ background: avatarColor(selectedMatchup.opponentEmail) }}>{oppInit}</span>}
