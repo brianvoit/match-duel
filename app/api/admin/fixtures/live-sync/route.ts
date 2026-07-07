@@ -142,12 +142,20 @@ export async function POST(req: NextRequest) {
     // 6. Settle any rounds that are now complete
     const transitions = await runRoundTransitions({ tournamentId: tournament.id });
 
-    // 7. Knockout bracket: ensure the skeleton exists, fill teams from results
-    //    so far (computed), then reconcile against the real API draw (authoritative
-    //    once published). All idempotent and safe to run every tick.
+    // 7. Knockout bracket: ensure the skeleton exists and fill teams from results
+    //    so far. These are DB-only (no API calls), so they run every tick.
     const bracketSeed = await ensureBracketSeeded({ tournamentId: tournament.id });
     const bracket = await runBracketResolution({ tournamentId: tournament.id });
-    const bracketApi = await reconcileBracketFromApi({ tournamentId: tournament.id });
+
+    //    The API reconcile fetches the ENTIRE season to match our slots to the
+    //    real draw — far too expensive to run every minute (it exhausts the
+    //    API-Football daily request quota, which freezes all score syncing).
+    //    The published draw barely changes, so run it only every 15 min or on
+    //    the daily full sync. Score sync (today + live) still runs every tick.
+    const runReconcile = forceFullSync || new Date().getUTCMinutes() % 15 === 0;
+    const bracketApi = runReconcile
+      ? await reconcileBracketFromApi({ tournamentId: tournament.id })
+      : { linked: 0, skipped: 'throttled' as const };
 
     return NextResponse.json({
       ok: true,
