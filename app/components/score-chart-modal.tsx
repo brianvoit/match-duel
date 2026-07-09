@@ -30,7 +30,7 @@ interface ScoreChartModalProps {
   onClose: () => void;
 }
 
-type ChartPoint = { label: string; myCum: number; oppCum: number; played: boolean; isStage?: boolean };
+type ChartPoint = { label: string; myCum: number; oppCum: number; played: boolean; stageStart?: string };
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -38,6 +38,13 @@ const STAGE_MOBILE_LABEL: Record<string, string> = {
   GROUP: 'GS', ROUND_OF_32: 'R32', ROUND_OF_16: 'R16',
   QUARTERFINAL: 'QF', SEMIFINAL: 'SF', THIRD_PLACE: '3rd', FINAL: 'Final',
 };
+
+// Short round labels for the vertical round-boundary markers on the chart.
+const STAGE_ABBR: Record<string, string> = {
+  ROUND_OF_32: 'Ro32', ROUND_OF_16: 'Ro16', QUARTERFINAL: 'QF',
+  SEMIFINAL: 'SF', THIRD_PLACE: '3P', FINAL: 'F',
+};
+const KO_ORDER = ['ROUND_OF_32', 'ROUND_OF_16', 'QUARTERFINAL', 'SEMIFINAL', 'THIRD_PLACE', 'FINAL'];
 
 const STAGE_GAME_COUNTS: Record<string, number> = {
   GROUP: 72, ROUND_OF_32: 16, ROUND_OF_16: 8,
@@ -59,8 +66,7 @@ function buildChart(
   const toY = (v: number) => PT + cH - (v / maxVal) * cH;
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(maxVal * f));
   const played = data.map((d, i) => ({ ...d, i })).filter(d => d.played);
-  const koIdx = data.findIndex(d => d.isStage);
-  return { step, toX, toY, yTicks, played, koIdx, cH, cW };
+  return { step, toX, toY, yTicks, played, cH, cW };
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -133,7 +139,13 @@ export function ScoreChartModal({
     (byMatchday.get(md) ?? byMatchday.set(md, []).get(md)!).push(x);
   }
   const sortedMatchdays = [...byMatchday.entries()].sort(([a], [b]) => a - b);
-  const firstKnockoutMd = sortedMatchdays.find(([, xs]) => xs.some(x => x.stage !== 'GROUP'))?.[0] ?? -1;
+
+  // First matchday each knockout round appears on → a labelled vertical marker.
+  const stageStartByMd = new Map<number, string>();
+  for (const stage of KO_ORDER) {
+    const entry = sortedMatchdays.find(([, xs]) => xs.some(x => x.stage === stage));
+    if (entry && !stageStartByMd.has(entry[0])) stageStartByMd.set(entry[0], STAGE_ABBR[stage]);
+  }
 
   // ── Points chart data ────────────────────────────────────────────────────────
 
@@ -147,7 +159,7 @@ export function ScoreChartModal({
       oppMd += computePickPoints(f, f.opponentPickSide, stage) ?? 0;
     }
     ptsMyCum += myMd; ptsOppCum += oppMd;
-    ptsData.push({ label: `MD${md}`, myCum: ptsMyCum, oppCum: ptsOppCum, played: xs.some(x => x.f.status === 'FINAL'), isStage: md === firstKnockoutMd });
+    ptsData.push({ label: `MD${md}`, myCum: ptsMyCum, oppCum: ptsOppCum, played: xs.some(x => x.f.status === 'FINAL'), stageStart: stageStartByMd.get(md) });
   }
 
   // ── Goals chart data ─────────────────────────────────────────────────────────
@@ -163,7 +175,7 @@ export function ScoreChartModal({
       if (f.opponentPickSide) oppMd += f.opponentPickSide === 'HOME' ? f.homeScore : f.awayScore;
     }
     goalsMyC += myMd; goalsOppC += oppMd;
-    goalsData.push({ label: `MD${md}`, myCum: goalsMyC, oppCum: goalsOppC, played: xs.some(x => x.f.status === 'FINAL'), isStage: md === firstKnockoutMd });
+    goalsData.push({ label: `MD${md}`, myCum: goalsMyC, oppCum: goalsOppC, played: xs.some(x => x.f.status === 'FINAL'), stageStart: stageStartByMd.get(md) });
   }
 
   // ── SVG layout constants ─────────────────────────────────────────────────────
@@ -227,10 +239,10 @@ export function ScoreChartModal({
     const oppLine = c.played.map(d => `${c.toX(d.i).toFixed(1)},${c.toY(d.oppCum).toFixed(1)}`).join(' ');
 
     // Label condensing: when step gets small, skip intermediate matchday labels.
-    // Stage labels (Ro32, QF …) and the first/last point always show.
+    // Round boundaries are shown as separate vertical markers (below), so we don't
+    // force a matchday label at them — that caused adjacent labels to collide.
     const labelEvery = c.step < 30 ? 3 : c.step < 44 ? 2 : 1;
-    const showLabel = (d: ChartPoint, i: number, n: number) =>
-      d.isStage || i === 0 || i === n - 1 || i % labelEvery === 0;
+    const showLabel = (i: number) => i === 0 || i % labelEvery === 0;
 
     const baseline = PT + c.cH;
 
@@ -255,12 +267,17 @@ export function ScoreChartModal({
           />
         ))}
 
-        {/* KO / Group-stage divider (dashed, stronger) */}
-        {c.koIdx > 0 && (
-          <line x1={(c.toX(c.koIdx) - c.step / 2).toFixed(1)} y1={PT}
-            x2={(c.toX(c.koIdx) - c.step / 2).toFixed(1)} y2={baseline}
-            stroke="var(--line)" strokeWidth={1.2} strokeDasharray="4 3" />
-        )}
+        {/* Round-boundary markers — a dashed vertical line + round label at the
+            start of each knockout round (Ro32, Ro16, QF, SF, 3P, F). */}
+        {data.map((d, i) => d.stageStart && (
+          <g key={`${prefix}mk-${i}`}>
+            <line x1={(c.toX(i) - c.step / 2).toFixed(1)} y1={PT}
+              x2={(c.toX(i) - c.step / 2).toFixed(1)} y2={baseline}
+              stroke="var(--line)" strokeWidth={1.2} strokeDasharray="4 3" />
+            <text x={(c.toX(i) - c.step / 2).toFixed(1)} y={PT + 8} textAnchor="middle"
+              fontSize={7.5} fontWeight={600} fill="var(--text-2)">{d.stageStart}</text>
+          </g>
+        ))}
 
         {/* Tick marks on x-axis baseline */}
         {data.map((d, i) => (
@@ -272,7 +289,7 @@ export function ScoreChartModal({
         ))}
 
         {/* X-axis labels — condensed when crowded */}
-        {data.map((d, i) => showLabel(d, i, data.length) && (
+        {data.map((d, i) => showLabel(i) && (
           <text key={`${prefix}x-${i}`} x={c.toX(i)} y={H - 6} textAnchor="middle" fontSize={8.5}
             fill={d.played ? 'var(--text-1)' : 'var(--text-2)'}>{d.label}</text>
         ))}
