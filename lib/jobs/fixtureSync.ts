@@ -57,24 +57,31 @@ export async function runFixtureSync(payload: FixtureSyncPayload): Promise<SyncR
   const preSyncStatusByProviderId = new Map<string, string>();
   const preSyncIdByProviderId = new Map<string, string>();
   const preSyncRoundIdByProviderId = new Map<string, string>();
+  // Existing DB home/away, so we can detect a knockout fixture whose stored
+  // orientation is reversed vs the API (the bracket seeds home/away by structure,
+  // which can differ from FIFA's designation) and map scores to the right side.
+  const preSyncHomeByProviderId = new Map<string, string>();
+  const preSyncAwayByProviderId = new Map<string, string>();
   let existingByNaturalKey = new Set<string>();
 
   if (allProviderIds.length > 0) {
     const { data, error } = await service
       .from('fixture')
-      .select('id, external_provider_id, status, round_id')
+      .select('id, external_provider_id, status, round_id, home_team, away_team')
       .in('external_provider_id', allProviderIds);
 
     if (error) {
       throw new Error(`Failed to lookup existing provider-id fixtures: ${error.message}`);
     }
 
-    for (const row of (data ?? []) as Array<{ id: string; external_provider_id: string; status: string; round_id: string }>) {
+    for (const row of (data ?? []) as Array<{ id: string; external_provider_id: string; status: string; round_id: string; home_team: string; away_team: string }>) {
       if (row.external_provider_id) {
         existingByProviderId.add(row.external_provider_id);
         preSyncStatusByProviderId.set(row.external_provider_id, row.status);
         preSyncIdByProviderId.set(row.external_provider_id, row.id);
         preSyncRoundIdByProviderId.set(row.external_provider_id, row.round_id);
+        preSyncHomeByProviderId.set(row.external_provider_id, row.home_team);
+        preSyncAwayByProviderId.set(row.external_provider_id, row.away_team);
       }
     }
   }
@@ -123,6 +130,23 @@ export async function runFixtureSync(payload: FixtureSyncPayload): Promise<SyncR
           // API-Football's fixtures feed doesn't include it (mapper always sends null),
           // so it must never clobber the seeded group letters. Only sync volatile fields.
           const { home_team: _h, away_team: _a, group_name: _g, ...updateRow } = dbRow;
+
+          // We keep the DB's home/away orientation but take scores from the API by
+          // position. If the DB row's orientation is reversed vs the API for this
+          // same match, swap the scores so they land on the correct side. Only act
+          // when team names match confidently in reverse (never on ambiguous names).
+          const norm = (s: string) => s.trim().toLowerCase();
+          const dbHome = preSyncHomeByProviderId.get(providerId);
+          const dbAway = preSyncAwayByProviderId.get(providerId);
+          const reversed = Boolean(dbHome && dbAway &&
+            norm(dbHome) === norm(fixture.awayTeam) &&
+            norm(dbAway) === norm(fixture.homeTeam) &&
+            norm(dbHome) !== norm(fixture.homeTeam));
+          if (reversed) {
+            [updateRow.home_score, updateRow.away_score] = [updateRow.away_score, updateRow.home_score];
+            [updateRow.home_pen_score, updateRow.away_pen_score] = [updateRow.away_pen_score, updateRow.home_pen_score];
+          }
+
           const { error } = await service.from('fixture').update(updateRow).eq('external_provider_id', providerId);
           if (error) throw new Error(`Failed provider-id fixture update: ${error.message}`);
 
@@ -134,10 +158,11 @@ export async function runFixtureSync(payload: FixtureSyncPayload): Promise<SyncR
             if (fixtureId && roundId) {
               newlyFinal.push({
                 id: fixtureId,
-                homeTeam:  fixture.homeTeam,
-                awayTeam:  fixture.awayTeam,
-                homeScore: fixture.homeScore ?? null,
-                awayScore: fixture.awayScore ?? null,
+                // Report in our stored orientation (swapped when reversed).
+                homeTeam:  reversed ? (dbHome as string) : fixture.homeTeam,
+                awayTeam:  reversed ? (dbAway as string) : fixture.awayTeam,
+                homeScore: (reversed ? fixture.awayScore : fixture.homeScore) ?? null,
+                awayScore: (reversed ? fixture.homeScore : fixture.awayScore) ?? null,
                 roundId,
               });
             }

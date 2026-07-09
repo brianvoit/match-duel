@@ -7,7 +7,7 @@ import {
   ParticipantStanding,
   RoundResultEntry,
 } from '@/app/components/playground-types';
-import { STAGE_POINTS, fmtStage, initials, computePickPoints, tournamentMatchday } from '@/app/components/playground-utils';
+import { STAGE_POINTS, fmtStage, initials, computePickPoints } from '@/app/components/playground-utils';
 import { avatarColor } from '@/lib/avatar-color';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -34,17 +34,10 @@ type ChartPoint = { label: string; myCum: number; oppCum: number; played: boolea
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const STAGE_ABBR: Record<string, string> = {
-  GROUP: 'GS', ROUND_OF_32: 'Ro32', ROUND_OF_16: 'Ro16',
-  QUARTERFINAL: 'QF', SEMIFINAL: 'SF', THIRD_PLACE: '3P', FINAL: 'F',
-};
-
 const STAGE_MOBILE_LABEL: Record<string, string> = {
   GROUP: 'GS', ROUND_OF_32: 'R32', ROUND_OF_16: 'R16',
   QUARTERFINAL: 'QF', SEMIFINAL: 'SF', THIRD_PLACE: '3rd', FINAL: 'Final',
 };
-
-const KNOCKOUT_ORDER = ['ROUND_OF_32', 'ROUND_OF_16', 'QUARTERFINAL', 'SEMIFINAL', 'THIRD_PLACE', 'FINAL'];
 
 const STAGE_GAME_COUNTS: Record<string, number> = {
   GROUP: 72, ROUND_OF_32: 16, ROUND_OF_16: 8,
@@ -112,77 +105,65 @@ export function ScoreChartModal({
     );
   }
 
-  const resultMap = new Map(roundResults.map(r => [r.stage, r]));
-
-  // ── Build matchday groups from GROUP round fixtures ──────────────────────────
-  // Use completedRoundFixtures so all 3 matchdays show on the chart, not just
-  // the current round. Falls back to current `fixtures` if group data absent.
-
-  const groupRound = allRounds.find(r => r.stage === 'GROUP');
-  const groupFixtures = groupRound
-    ? (completedRoundFixtures[groupRound.id] ?? fixtures)
-    : fixtures;
-
-  // Group the group stage by its 3 matchdays (each team plays 3 group games),
-  // not by calendar playing-day — otherwise the ~17 group-stage days dominate the
-  // x-axis and the knockout rounds (where the tournament has progressed to) get
-  // squeezed into the far right. Falls back to the playing-day if matchday is null.
-  const mdGroups = new Map<number, Fixture[]>();
-  for (const f of groupFixtures) {
-    const md = f.matchday ?? tournamentMatchday(f.startsAt);
-    if (!mdGroups.has(md)) mdGroups.set(md, []);
-    mdGroups.get(md)!.push(f);
+  // ── Build one matchday series across the whole tournament ────────────────────
+  // "Matchday" = the Nth day on which any match was played (rest days excluded),
+  // spanning the group stage AND the knockout rounds — so the chart shows the
+  // granular per-day progression the tournament actually has, not just the group
+  // stage with the knockouts collapsed to one point each. Points/goals per
+  // matchday are summed per fixture using that fixture's own stage.
+  const stageByRoundId = new Map(allRounds.map(r => [r.id, r.stage as string]));
+  const allFx: { f: Fixture; stage: string }[] = [];
+  if (currentRound) for (const f of fixtures) allFx.push({ f, stage: currentRound.stage });
+  for (const [rid, fxs] of Object.entries(completedRoundFixtures)) {
+    if (rid === currentRound?.id) continue;
+    const stage = stageByRoundId.get(rid);
+    if (!stage) continue;
+    for (const f of fxs) allFx.push({ f, stage });
   }
-  const sortedMds = [...mdGroups.entries()].sort(([a], [b]) => a - b);
+
+  // Matchday index = position of a fixture's local playing-day among all distinct
+  // playing days (1-based), so rest days don't advance the count.
+  const localDayMs = (s: string) => { const d = new Date(s); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+  const distinctDays = [...new Set(allFx.map(x => localDayMs(x.f.startsAt)))].sort((a, b) => a - b);
+  const matchdayOf = new Map(distinctDays.map((t, i) => [t, i + 1]));
+
+  const byMatchday = new Map<number, { f: Fixture; stage: string }[]>();
+  for (const x of allFx) {
+    const md = matchdayOf.get(localDayMs(x.f.startsAt))!;
+    (byMatchday.get(md) ?? byMatchday.set(md, []).get(md)!).push(x);
+  }
+  const sortedMatchdays = [...byMatchday.entries()].sort(([a], [b]) => a - b);
+  const firstKnockoutMd = sortedMatchdays.find(([, xs]) => xs.some(x => x.stage !== 'GROUP'))?.[0] ?? -1;
 
   // ── Points chart data ────────────────────────────────────────────────────────
 
   let ptsMyCum = 0, ptsOppCum = 0;
   const ptsData: ChartPoint[] = [];
-
-  for (const [md, mdFix] of sortedMds) {
+  for (const [md, xs] of sortedMatchdays) {
     let myMd = 0, oppMd = 0;
-    for (const f of mdFix) {
+    for (const { f, stage } of xs) {
       const myPick = pickMap[f.id] ?? f.myPickSide;
-      // Always use GROUP stage points for group stage fixtures
-      myMd  += computePickPoints(f, myPick,             'GROUP') ?? 0;
-      oppMd += computePickPoints(f, f.opponentPickSide, 'GROUP') ?? 0;
+      myMd  += computePickPoints(f, myPick,             stage) ?? 0;
+      oppMd += computePickPoints(f, f.opponentPickSide, stage) ?? 0;
     }
     ptsMyCum += myMd; ptsOppCum += oppMd;
-    ptsData.push({ label: `MD${md}`, myCum: ptsMyCum, oppCum: ptsOppCum, played: mdFix.some(f => f.status === 'FINAL') });
-  }
-  for (const stage of KNOCKOUT_ORDER) {
-    const result = resultMap.get(stage);
-    const myE  = result?.participants.find(p => p.participantId === myParticipantId);
-    const oppE = result?.participants.find(p => p.participantId !== myParticipantId);
-    if (result) { ptsMyCum += myE?.points ?? 0; ptsOppCum += oppE?.points ?? 0; }
-    const inAll = allRounds.some(r => r.stage === stage);
-    if (inAll || result) ptsData.push({ label: STAGE_ABBR[stage] ?? stage, myCum: ptsMyCum, oppCum: ptsOppCum, played: Boolean(result), isStage: true });
+    ptsData.push({ label: `MD${md}`, myCum: ptsMyCum, oppCum: ptsOppCum, played: xs.some(x => x.f.status === 'FINAL'), isStage: md === firstKnockoutMd });
   }
 
   // ── Goals chart data ─────────────────────────────────────────────────────────
 
   let goalsMyC = 0, goalsOppC = 0;
   const goalsData: ChartPoint[] = [];
-
-  for (const [md, mdFix] of sortedMds) {
+  for (const [md, xs] of sortedMatchdays) {
     let myMd = 0, oppMd = 0;
-    for (const f of mdFix) {
+    for (const { f } of xs) {
       if (f.status !== 'FINAL' || f.homeScore === null || f.awayScore === null) continue;
       const myPick = pickMap[f.id] ?? f.myPickSide;
       if (myPick) myMd += myPick === 'HOME' ? f.homeScore : f.awayScore;
       if (f.opponentPickSide) oppMd += f.opponentPickSide === 'HOME' ? f.homeScore : f.awayScore;
     }
     goalsMyC += myMd; goalsOppC += oppMd;
-    goalsData.push({ label: `MD${md}`, myCum: goalsMyC, oppCum: goalsOppC, played: mdFix.some(f => f.status === 'FINAL') });
-  }
-  for (const stage of KNOCKOUT_ORDER) {
-    const result = resultMap.get(stage);
-    const myE  = result?.participants.find(p => p.participantId === myParticipantId);
-    const oppE = result?.participants.find(p => p.participantId !== myParticipantId);
-    if (result) { goalsMyC += myE?.tiebreakGoals ?? 0; goalsOppC += oppE?.tiebreakGoals ?? 0; }
-    const inAll = allRounds.some(r => r.stage === stage);
-    if (inAll || result) goalsData.push({ label: STAGE_ABBR[stage] ?? stage, myCum: goalsMyC, oppCum: goalsOppC, played: Boolean(result), isStage: true });
+    goalsData.push({ label: `MD${md}`, myCum: goalsMyC, oppCum: goalsOppC, played: xs.some(x => x.f.status === 'FINAL'), isStage: md === firstKnockoutMd });
   }
 
   // ── SVG layout constants ─────────────────────────────────────────────────────
