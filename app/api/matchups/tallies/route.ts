@@ -33,13 +33,24 @@ export async function GET() {
       data: { id: string; user_id: string; matchup_id: string }[] | null;
     };
 
-  // Every pick across those matchups
-  const { data: picks } = await service
-    .from('pick')
-    .select('participant_id, fixture_id, side')
-    .in('matchup_id', matchupIds) as {
-      data: { participant_id: string; fixture_id: string; side: 'HOME' | 'AWAY' }[] | null;
-    };
+  // Every pick across those matchups. PostgREST caps a single response at 1000
+  // rows, and a user in several matchups can easily exceed that (e.g. 6 matchups
+  // × ~200 picks) — so page through the full set. Missing the tail silently drops
+  // the most-recently-added (knockout) picks and freezes the tally in the past.
+  type PickRow = { participant_id: string; fixture_id: string; side: 'HOME' | 'AWAY' };
+  const picks: PickRow[] = [];
+  const PICK_PAGE = 1000;
+  for (let from = 0; from < 100_000; from += PICK_PAGE) {
+    const { data, error } = await service
+      .from('pick')
+      .select('participant_id, fixture_id, side')
+      .in('matchup_id', matchupIds)
+      .range(from, from + PICK_PAGE - 1) as { data: PickRow[] | null; error: unknown };
+    if (error) break;
+    const rows = data ?? [];
+    picks.push(...rows);
+    if (rows.length < PICK_PAGE) break;
+  }
 
   // Finished fixtures referenced by those picks, plus their stage
   const fixtureIds = [...new Set((picks ?? []).map(p => p.fixture_id))];

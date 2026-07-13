@@ -180,7 +180,8 @@ export function ScoreChartModal({
 
   // ── SVG layout constants ─────────────────────────────────────────────────────
 
-  const W = 520, H = 190, PL = 36, PR = 16, PT = 16, PB = 36;
+  // PT leaves a band above the plot for the round labels (Ro32, Ro16 …).
+  const W = 520, H = 200, PL = 36, PR = 16, PT = 30, PB = 36;
   const myColor  = 'var(--accent)';
   const oppColor = 'var(--chart-line-opp)';
 
@@ -267,15 +268,15 @@ export function ScoreChartModal({
           />
         ))}
 
-        {/* Round-boundary markers — a dashed vertical line + round label at the
-            start of each knockout round (Ro32, Ro16, QF, SF, 3P, F). */}
+        {/* Round-boundary markers — a dashed vertical line through the plot plus a
+            round label (Ro32, Ro16, QF, SF, 3P, F) in the band ABOVE the chart. */}
         {data.map((d, i) => d.stageStart && (
           <g key={`${prefix}mk-${i}`}>
-            <line x1={(c.toX(i) - c.step / 2).toFixed(1)} y1={PT}
+            <line x1={(c.toX(i) - c.step / 2).toFixed(1)} y1={PT - 12}
               x2={(c.toX(i) - c.step / 2).toFixed(1)} y2={baseline}
               stroke="var(--line)" strokeWidth={1.2} strokeDasharray="4 3" />
-            <text x={(c.toX(i) - c.step / 2).toFixed(1)} y={PT + 8} textAnchor="middle"
-              fontSize={7.5} fontWeight={600} fill="var(--text-2)">{d.stageStart}</text>
+            <text x={(c.toX(i) - c.step / 2).toFixed(1)} y={PT - 16} textAnchor="middle"
+              fontSize={8} fontWeight={600} fill="var(--text-2)">{d.stageStart}</text>
           </g>
         ))}
 
