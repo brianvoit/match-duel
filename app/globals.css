@@ -2988,6 +2988,12 @@ select {
 }
 
 /* Detail body — full width on mobile, centred 3/5 on desktop */
+.wc-fd-share-row {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0 8px;
+}
+
 .wc-fd-detail-body {
   display: flex;
   flex-direction: column;

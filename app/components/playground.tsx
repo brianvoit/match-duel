@@ -7,11 +7,12 @@ import { ChatPanel } from '@/app/components/chat-panel';
 import { PreMatchPanel } from '@/app/components/pre-match-panel';
 import { ScoreChartModal } from '@/app/components/score-chart-modal';
 import { ProfileSettings } from '@/app/components/profile-settings';
+import { renderMatchShareCard, type ShareGoal } from '@/app/components/share-card';
 import {
   Tournament, Matchup, Round, Fixture,
   ParticipantStanding, RoundResultParticipant, RoundResultEntry,
   TournamentForm, TournamentFormFixture,
-  SquadData, RecapData, PreMatchData, EventsData,
+  SquadData, RecapData, PreMatchData, EventsData, MatchEvent,
   ContentTab, DrawerTab, MobileView, NoticeTone,
 } from '@/app/components/playground-types';
 import {
@@ -101,6 +102,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   const [createOpen, setCreateOpen] = useState(false);
   const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
   const [copyConfirmed, setCopyConfirmed] = useState(false);
+  const [sharingCard, setSharingCard] = useState(false);
   const [cancelMatchupId, setCancelMatchupId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const drawerRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -1050,6 +1052,82 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     fetchNotifSummary();
   }
 
+  /**
+   * Render the fixture as a shareable PNG and put it on the clipboard so it can
+   * be pasted straight into a messaging app. Falls back to the native share
+   * sheet (mobile) and then to a download if the clipboard image API is absent.
+   */
+  async function shareMatchCard(f: Fixture, stage: string) {
+    if (sharingCard) return;
+    setSharingCard(true);
+    try {
+      // Goals for the timeline. Non-fatal: a card without scorers still reads fine.
+      const ev = await fetch(`/api/fixtures/${f.id}/events`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .catch(() => null);
+      const goals: ShareGoal[] = ((ev?.events ?? []) as MatchEvent[])
+        // API-Football reports a missed penalty as type 'Goal' too — exclude it,
+        // or the running score overshoots the real result.
+        .filter((e) => e.type === 'Goal' && !/missed/i.test(e.detail ?? ''))
+        .map((e) => {
+          // Compare by code: the events feed uses its own team-name variants.
+          const scoredBy: 'HOME' | 'AWAY' =
+            teamCode(e.team) === teamCode(f.awayTeam) ? 'AWAY' : 'HOME';
+          // An own goal counts for the opponent.
+          const isOwn = /own/i.test(e.detail ?? '');
+          const side: 'HOME' | 'AWAY' = isOwn ? (scoredBy === 'HOME' ? 'AWAY' : 'HOME') : scoredBy;
+          return { side, player: e.player, minute: e.minute, extraMinute: e.extraMinute, detail: e.detail };
+        });
+
+      const myName = displayName || userEmail.split('@')[0];
+      const oppName = selectedMatchup?.opponentDisplayName
+        ?? selectedMatchup?.opponentEmail?.split('@')[0]
+        ?? 'Opponent';
+
+      const blob = await renderMatchShareCard({
+        homeTeam: f.homeTeam,
+        awayTeam: f.awayTeam,
+        homeScore: f.homeScore,
+        awayScore: f.awayScore,
+        homePenScore: f.homePenScore,
+        awayPenScore: f.awayPenScore,
+        status: f.status,
+        kickoff: f.startsAt,
+        stageLabel: fmtStage(stage),
+        goals,
+        pickers: [
+          { name: myName, side: pickMap[f.id] ?? f.myPickSide ?? null },
+          { name: oppName, side: f.opponentPickSide ?? null },
+        ],
+        pointsAtStake: STAGE_POINTS[stage] ?? 1,
+      });
+
+      const file = new File([blob], `${teamCode(f.homeTeam)}-${teamCode(f.awayTeam)}.png`, { type: 'image/png' });
+
+      // Clipboard image first — that's the copy/paste flow.
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        showNotice('ok', 'Match card copied — paste it anywhere.');
+        return;
+      }
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = file.name; a.click();
+      URL.revokeObjectURL(url);
+      showNotice('ok', 'Match card downloaded.');
+    } catch (err) {
+      // A user cancelling the native share sheet isn't an error worth shouting about.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      showNotice('error', 'Could not create the match card.');
+    } finally {
+      setSharingCard(false);
+    }
+  }
+
   async function saveDisplayName() {
     const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
     setSavingName(true);
@@ -1275,6 +1353,18 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
               <ScoreBugForm form={preMatchData?.awayForm ?? ''} />
             </div>
           </div>
+        </div>
+
+        {/* Share the match as an image (copy/paste into a chat) */}
+        <div className="wc-fd-share-row">
+          <button
+            className="wc-btn wc-btn-sm"
+            type="button"
+            disabled={sharingCard}
+            onClick={() => shareMatchCard(f, fRound?.stage ?? currentRound?.stage ?? 'GROUP')}
+          >
+            {sharingCard ? 'Creating…' : 'Share match card'}
+          </button>
         </div>
 
         {/* ── Detail body — centred 3/5 on desktop ─────────────────── */}

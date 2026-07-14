@@ -106,6 +106,50 @@ export const TEAM_INFO: Record<string, { flag: string; code: string }> = {
   'TBD':                      { flag: '🏳️', code: 'TBD' },
 };
 
+/**
+ * Primary identity colour per team, keyed by code so name aliases (USA /
+ * United States, Czechia / Czech Republic …) share one entry. Used for the
+ * two-tone gradient on the shareable match card.
+ *
+ * These are the most *recognisable* colour for each side rather than a literal
+ * shirt colour — sides whose kit is white (England, Germany, New Zealand) would
+ * otherwise wash the card out. Light picks (Brazil, Argentina) are fine: the
+ * card measures luminance and flips to dark text where needed.
+ */
+const TEAM_COLORS: Record<string, string> = {
+  // Americas
+  USA: '#0A3161', MEX: '#006847', CAN: '#D52B1E', BRA: '#FEDD00', ARG: '#6CACE4',
+  COL: '#FCD116', ECU: '#FFDD00', URU: '#4A8FD4', CHI: '#D52B1E', PER: '#D91023',
+  PAR: '#D52B1E', VEN: '#7B1113', BOL: '#007934', PAN: '#D21034', CRC: '#C8102E',
+  HON: '#0073CF', JAM: '#009B3A', TTO: '#CE1126', CUB: '#002A8F', HAI: '#00209F',
+  GUA: '#4997D0', SLV: '#0F47AF', CUW: '#002B7F',
+  // Europe
+  FRA: '#0055A4', ESP: '#C60B1E', GER: '#1C1C1C', ENG: '#CE1124', POR: '#C5282F',
+  NED: '#FF6C00', BEL: '#C8102E', ITA: '#0066CC', CRO: '#DA1E28', SRB: '#C6363C',
+  SUI: '#DA291C', AUT: '#ED2939', DEN: '#C8102E', POL: '#DC143C', SCO: '#0065BD',
+  WAL: '#C8102E', CZE: '#11457E', SVN: '#0F4C81', SVK: '#0B4EA2', ROU: '#FCD116',
+  HUN: '#CD2A3E', UKR: '#FFD500', TUR: '#E30A17', ALB: '#E41E20', SWE: '#FECC00',
+  NOR: '#BA0C2F', GRE: '#0D5EAF', BIH: '#002F6C', GEO: '#DA291C', ISL: '#003897',
+  FIN: '#003580', BUL: '#00966E',
+  // Africa
+  MAR: '#C1272D', SEN: '#00853F', NGA: '#008751', EGY: '#C8102E', CMR: '#007A5E',
+  ALG: '#006233', TUN: '#E70013', CIV: '#FF8200', RSA: '#007A4D', MLI: '#14B53A',
+  GHA: '#006B3F', COD: '#007FFF', CPV: '#003893',
+  // Asia
+  JPN: '#0A2472', KOR: '#C8102E', KSA: '#006C35', AUS: '#FFCD00', IRN: '#DA0000',
+  QAT: '#8A1538', JOR: '#007A3D', UZB: '#1EB53A', IRQ: '#007A3D', OMA: '#C8102E',
+  BHR: '#CE1126', IDN: '#CE1126', PLE: '#007A3D',
+  // Oceania
+  NZL: '#00247D',
+  // Placeholders
+  UPO: '#4A5568', FPO: '#4A5568', TBD: '#4A5568',
+};
+
+/** Primary identity colour for a team (hex). Falls back to a neutral slate. */
+export function teamColor(teamName: string): string {
+  return TEAM_COLORS[teamCode(teamName)] ?? '#4A5568';
+}
+
 export function teamCode(teamName: string): string {
   if (TEAM_INFO[teamName]) return TEAM_INFO[teamName].code;
   if (teamName.startsWith('TBD')) return 'TBD';
