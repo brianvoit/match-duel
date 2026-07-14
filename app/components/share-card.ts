@@ -85,6 +85,23 @@ function gradientSafe(hex: string): string {
   return c;
 }
 
+/**
+ * Mute the team colour toward a dark neutral so the card reads soft rather than
+ * poster-bright — the hue still identifies the side, but it sits back behind the
+ * text instead of competing with it.
+ */
+function faded(hex: string): string {
+  return mixToward(gradientSafe(hex), [24, 25, 30], 0.5);
+}
+
+/** Truncate to fit a column, so a long name can't collide with the minute. */
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > maxWidth) t = t.slice(0, -1);
+  return `${t}…`;
+}
+
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
 const FONT = '"Segoe UI", system-ui, -apple-system, Roboto, sans-serif';
@@ -157,13 +174,13 @@ export async function renderMatchShareCard(o: ShareCardOptions): Promise<Blob> {
   ctx.scale(SCALE, SCALE);
   ctx.textBaseline = 'alphabetic';
 
-  // ── Two-tone horizontal gradient (home colour → away colour) ────────────────
-  const homeC = gradientSafe(teamColor(o.homeTeam));
-  const awayC = gradientSafe(teamColor(o.awayTeam));
-  const grad = ctx.createLinearGradient(0, 0, W, 0);
+  // ── Two-tone gradient on a diagonal (home colour → away colour) ────────────
+  // Angled top-left → bottom-right, blending across the whole card so neither
+  // colour sits as a flat block.
+  const homeC = faded(teamColor(o.homeTeam));
+  const awayC = faded(teamColor(o.awayTeam));
+  const grad = ctx.createLinearGradient(0, 0, W, H);
   grad.addColorStop(0, homeC);
-  grad.addColorStop(0.42, homeC);
-  grad.addColorStop(0.58, awayC);
   grad.addColorStop(1, awayC);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
@@ -172,7 +189,7 @@ export async function renderMatchShareCard(o: ShareCardOptions): Promise<Blob> {
   const veil = ctx.createLinearGradient(0, 0, 0, H);
   veil.addColorStop(0, 'rgba(0,0,0,0.10)');
   veil.addColorStop(0.55, 'rgba(0,0,0,0.02)');
-  veil.addColorStop(1, 'rgba(0,0,0,0.28)');
+  veil.addColorStop(1, 'rgba(0,0,0,0.24)');
   ctx.fillStyle = veil;
   ctx.fillRect(0, 0, W, H);
 
@@ -215,22 +232,35 @@ export async function renderMatchShareCard(o: ShareCardOptions): Promise<Blob> {
   let running = { h: 0, a: 0 };
   let y = 400;
 
+  // The running score owns the exact centre; each scorer sits on their own
+  // team's side of it, with the minute nearest the middle. GAP keeps the minute
+  // clear of the score, and the name column is capped so it can't run into it.
+  const SCORE_HALF = 58;
+  const GAP = 18;
+
   const drawGoal = (g: ShareGoal) => {
     if (g.side === 'HOME') running.h += 1; else running.a += 1;
     const [name, min] = goalLabel(g).split('|');
-    ctx.textAlign = 'right';
-    ctx.font = font(700, 30, FONT);
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.fillText(`${running.h} - ${running.a}`, midX - 24, y);
-    ctx.textAlign = 'left';
-    ctx.font = font(500, 30, FONT);
-    ctx.fillText(name, midX + 8, y);
-    // Measure with the font the name was drawn in — measuring after switching to
-    // the smaller minute font under-reports the width and the two collide.
-    const nameW = ctx.measureText(name).width;
+    const dir = g.side === 'HOME' ? -1 : 1;
+    const minuteEdge = midX + dir * (SCORE_HALF + GAP);
+
     ctx.font = font(500, 26, FONT);
+    const minW = ctx.measureText(min).width;
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillText(min, midX + 8 + nameW + 16, y);
+    ctx.textAlign = g.side === 'HOME' ? 'right' : 'left';
+    ctx.fillText(min, minuteEdge, y);
+
+    const nameEdge = minuteEdge + dir * (minW + GAP);
+    ctx.font = font(500, 30, FONT);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    // Room left between the name column and the card edge.
+    const maxNameW = Math.abs(nameEdge - (g.side === 'HOME' ? 56 : W - 56));
+    ctx.fillText(fitText(ctx, name, maxNameW), nameEdge, y);
+
+    ctx.textAlign = 'center';
+    ctx.font = font(700, 30, FONT);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`${running.h} - ${running.a}`, midX, y);
     y += 46;
   };
 

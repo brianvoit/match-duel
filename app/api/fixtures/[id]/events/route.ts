@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
+import { teamCode } from '@/lib/data/teamInfo';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -97,9 +98,15 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     } catch { /* fall back to name match */ }
 
     const relabelTeam = (apiName: string): string => {
+      // Identity first. A knockout fixture's home/away can be reversed relative
+      // to the API (we seed orientation from the bracket), so mapping the API's
+      // home to ours *positionally* would flip every event onto the wrong team.
+      // Comparing codes also absorbs the API's name variants.
+      if (teamCode(apiName) === teamCode(fixture.home_team)) return fixture.home_team;
+      if (teamCode(apiName) === teamCode(fixture.away_team)) return fixture.away_team;
+      // Only fall back to position for a stand-in id whose real teams aren't ours.
       if (apiHome && apiName === apiHome) return fixture.home_team;
       if (apiAway && apiName === apiAway) return fixture.away_team;
-      if (apiName === fixture.away_team) return fixture.away_team;
       return fixture.home_team;
     };
 
