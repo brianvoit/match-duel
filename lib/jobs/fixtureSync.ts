@@ -7,6 +7,9 @@ export interface NewlyFinalFixture {
   awayTeam: string;
   homeScore: number | null;
   awayScore: number | null;
+  // Needed to score knockout matches decided on penalties.
+  homePenScore: number | null;
+  awayPenScore: number | null;
   roundId: string;
 }
 
@@ -163,6 +166,8 @@ export async function runFixtureSync(payload: FixtureSyncPayload): Promise<SyncR
                 awayTeam:  reversed ? (dbAway as string) : fixture.awayTeam,
                 homeScore: (reversed ? fixture.awayScore : fixture.homeScore) ?? null,
                 awayScore: (reversed ? fixture.homeScore : fixture.awayScore) ?? null,
+                homePenScore: (reversed ? fixture.awayPenScore : fixture.homePenScore) ?? null,
+                awayPenScore: (reversed ? fixture.homePenScore : fixture.awayPenScore) ?? null,
                 roundId,
               });
             }

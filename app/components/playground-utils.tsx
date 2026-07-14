@@ -1,14 +1,9 @@
 import type { Fixture } from '@/app/components/playground-types';
+import { WORLD_CUP_2026_SCORING } from '@/lib/domain/scoring';
 
-export const STAGE_POINTS: Record<string, number> = {
-  GROUP: 1,
-  ROUND_OF_32: 2,
-  ROUND_OF_16: 4,
-  QUARTERFINAL: 8,
-  SEMIFINAL: 8,
-  THIRD_PLACE: 16,
-  FINAL: 32,
-};
+// Derived from the single source of truth in lib/domain/scoring.ts — this used to
+// be a hand-maintained copy, which silently drifted out of sync with the server.
+export const STAGE_POINTS: Record<string, number> = WORLD_CUP_2026_SCORING.stagePoints;
 
 export const STAGE_LABELS: Record<string, string> = {
   GROUP:        'Group Stage',
@@ -42,7 +37,7 @@ export function isGenuineDraw(
 }
 
 export function computePickPoints(
-  fixture: Fixture,
+  fixture: Pick<Fixture, 'status' | 'homeScore' | 'awayScore' | 'homePenScore' | 'awayPenScore'>,
   pickedSide: 'HOME' | 'AWAY' | null,
   stage: string
 ): number | null {

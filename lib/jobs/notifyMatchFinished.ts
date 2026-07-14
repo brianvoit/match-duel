@@ -13,11 +13,6 @@ import { createNotificationEvents } from '@/lib/notifications';
 import type { NewlyFinalFixture } from '@/lib/jobs/fixtureSync';
 import { computePickPoints } from '@/app/components/playground-utils';
 
-const STAGE_POINTS: Record<string, number> = {
-  GROUP: 1, ROUND_OF_32: 2, ROUND_OF_16: 4,
-  QUARTERFINAL: 8, SEMIFINAL: 16, THIRD_PLACE: 16, FINAL: 32,
-};
-
 export async function notifyMatchFinished(fixtures: NewlyFinalFixture[]): Promise<void> {
   if (!fixtures.length) return;
 
@@ -37,8 +32,6 @@ export async function notifyMatchFinished(fixtures: NewlyFinalFixture[]): Promis
   for (const fixture of fixtures) {
     const stage = stageByRoundId.get(fixture.roundId);
     if (!stage) continue;
-
-    const pts = STAGE_POINTS[stage] ?? 1;
 
     // Find all picks for this fixture
     const { data: picks } = await service
@@ -78,11 +71,20 @@ export async function notifyMatchFinished(fixtures: NewlyFinalFixture[]): Promis
       const matchFinishedStages = user.prefs?.match_finished as string[] | null;
       if (!matchFinishedStages || !matchFinishedStages.includes(stage)) continue;
 
-      // Calculate points
-      const won  = (pick.side === 'HOME' && (fixture.homeScore ?? 0) > (fixture.awayScore ?? 0))
-                || (pick.side === 'AWAY' && (fixture.awayScore ?? 0) > (fixture.homeScore ?? 0));
-      const draw = fixture.homeScore !== null && fixture.homeScore === fixture.awayScore;
-      const earnedPts = (won || draw) ? pts : 0;
+      // Points via the shared scorer, so the push can never disagree with what
+      // actually gets settled: a draw is worth 0, and a knockout level after extra
+      // time is scored by the penalty-shootout winner.
+      const earnedPts = computePickPoints(
+        {
+          status: 'FINAL',
+          homeScore: fixture.homeScore,
+          awayScore: fixture.awayScore,
+          homePenScore: fixture.homePenScore,
+          awayPenScore: fixture.awayPenScore,
+        },
+        pick.side === 'HOME' || pick.side === 'AWAY' ? pick.side : null,
+        stage,
+      ) ?? 0;
 
       // Concise message: "Mexico 2–1 Poland · +1pt" or "Germany 3–0 USA · 0pts"
       const score = `${fixture.homeScore ?? '?'}–${fixture.awayScore ?? '?'}`;
