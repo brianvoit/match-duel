@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
+import { orderByFixtureSides } from '@/lib/domain/teamSides';
 import type { TeamLineup, SquadData } from '@/app/components/playground-types';
 
 interface RouteContext {
@@ -115,10 +116,12 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       return NextResponse.json({ ok: true, available: false, reason: 'not_yet_available' } satisfies Partial<SquadData> & { ok: boolean });
     }
 
-    // API-Football returns lineups in [home, away] order. Map by position and
-    // relabel to our fixture's teams.
-    const homeRaw = lineups[0] ?? null;
-    const awayRaw = lineups[1] ?? null;
+    // Identify each lineup by team, not by API position — a knockout fixture's
+    // orientation can be reversed vs the API, which would otherwise relabel every
+    // player onto the wrong side (see orderByFixtureSides).
+    const [homeRaw, awayRaw] = orderByFixtureSides(
+      lineups, (l) => l.team.name, fixture.home_team, fixture.away_team,
+    );
 
     const home = homeRaw ? mapLineup(homeRaw, fixture.home_team) : null;
     const away = awayRaw ? mapLineup(awayRaw, fixture.away_team) : null;
