@@ -81,11 +81,21 @@ export function ChatPanel({
     onMarkRead();
   }, [matchupId, onMarkRead]);
 
+  // Latest callbacks via refs, so the init/polling effects can run purely on
+  // matchupId. Depending on the callbacks directly re-fired this effect on every
+  // render (markRead changes when the parent passes a fresh onMarkRead), which
+  // hammered /messages, /messages/read and /unread-count and could feed back into
+  // the parent via onMarkRead → setState → re-render.
+  const loadRef = useRef(loadMessages);
+  loadRef.current = loadMessages;
+  const markReadRef = useRef(markRead);
+  markReadRef.current = markRead;
+
   // Initial load + mark read whenever the matchup changes.
   useEffect(() => {
-    loadMessages();
-    markRead();
-  }, [matchupId, loadMessages, markRead]);
+    loadRef.current();
+    markReadRef.current();
+  }, [matchupId]);
 
   // Realtime: broadcast for new messages (works on Nano), postgres_changes for
   // reactions. The hook handles reconnect-on-focus, backoff, and cleanup.
@@ -102,9 +112,9 @@ export function ChatPanel({
   // Polling fallback — catches messages if realtime drops. Supabase Realtime
   // handles all normal delivery; this only fires every 2 minutes as a safety net.
   useEffect(() => {
-    const interval = setInterval(() => { loadMessages(); }, 120_000);
+    const interval = setInterval(() => { loadRef.current(); }, 120_000);
     return () => clearInterval(interval);
-  }, [loadMessages]);
+  }, []);
 
   async function sendMessage() {
     const content = input.trim();

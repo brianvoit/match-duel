@@ -447,6 +447,15 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     }
   }, []);
 
+  // Stable so ChatPanel's effects don't re-fire every render (an inline handler
+  // here previously drove a /messages request loop).
+  const handleChatMarkRead = useCallback(() => {
+    fetch('/api/messages/unread-count', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setTotalUnread(d.total ?? 0); })
+      .catch(() => {});
+  }, []);
+
   // ── Effects ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -1060,7 +1069,8 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   async function shareMatchCard(f: Fixture, stage: string) {
     if (sharingCard) return;
     setSharingCard(true);
-    try {
+
+    const buildCard = async (): Promise<Blob> => {
       // Goals for the timeline. Non-fatal: a card without scorers still reads fine.
       const ev = await fetch(`/api/fixtures/${f.id}/events`, { cache: 'no-store' })
         .then((r) => r.json())
@@ -1084,7 +1094,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
         ?? selectedMatchup?.opponentEmail?.split('@')[0]
         ?? 'Opponent';
 
-      const blob = await renderMatchShareCard({
+      return renderMatchShareCard({
         homeTeam: f.homeTeam,
         awayTeam: f.awayTeam,
         homeScore: f.homeScore,
@@ -1101,15 +1111,29 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
         ],
         pointsAtStake: STAGE_POINTS[stage] ?? 1,
       });
+    };
 
+    try {
+      // Clipboard image first — that's the copy/paste flow. ClipboardItem is
+      // handed the *promise*: awaiting the render before calling write() spends
+      // the click's user activation, and the browser then rejects the write with
+      // NotAllowedError. Constructing it synchronously keeps the gesture alive.
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': buildCard() })]);
+          showNotice('ok', 'Match card copied — paste it anywhere.');
+          return;
+        } catch (clipErr) {
+          // Image clipboard isn't universal (Firefox, some iOS versions, denied
+          // permission). Fall through to the share sheet / download instead of
+          // reporting a failure the user can't act on.
+          console.warn('[share-card] clipboard unavailable, falling back', clipErr);
+        }
+      }
+
+      const blob = await buildCard();
       const file = new File([blob], `${teamCode(f.homeTeam)}-${teamCode(f.awayTeam)}.png`, { type: 'image/png' });
 
-      // Clipboard image first — that's the copy/paste flow.
-      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        showNotice('ok', 'Match card copied — paste it anywhere.');
-        return;
-      }
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file] });
         return;
@@ -1122,7 +1146,9 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     } catch (err) {
       // A user cancelling the native share sheet isn't an error worth shouting about.
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      showNotice('error', 'Could not create the match card.');
+      console.error('[share-card]', err);
+      const why = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      showNotice('error', `Could not create the match card — ${why}`);
     } finally {
       setSharingCard(false);
     }
@@ -3149,10 +3175,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                     opponentDisplayName={selectedMatchup.opponentDisplayName ?? null}
                     opponentEmail={selectedMatchup.opponentEmail}
                     opponentAvatarUrl={selectedMatchup.opponentAvatarUrl ?? null}
-                    onMarkRead={() => {
-                      fetch('/api/messages/unread-count', { cache: 'no-store' })
-                        .then(r => r.json()).then(d => { if (d.ok) setTotalUnread(d.total ?? 0); }).catch(() => {});
-                    }}
+                    onMarkRead={handleChatMarkRead}
                     opponentOnline={opponentOnline}
                   />
                 ) : (
@@ -3523,10 +3546,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 opponentDisplayName={selectedMatchup.opponentDisplayName ?? null}
                 opponentEmail={selectedMatchup.opponentEmail}
                 opponentAvatarUrl={selectedMatchup.opponentAvatarUrl ?? null}
-                onMarkRead={() => {
-                  fetch('/api/messages/unread-count', { cache: 'no-store' })
-                    .then(r => r.json()).then(d => { if (d.ok) setTotalUnread(d.total ?? 0); }).catch(() => {});
-                }}
+                onMarkRead={handleChatMarkRead}
                 opponentOnline={opponentOnline}
                 hideHeader
               />
