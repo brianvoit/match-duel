@@ -576,7 +576,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMatchup?.matchupId]);
 
-  // 30s live polling
+  // Live score polling — 15s, only while a fixture in view is actually LIVE.
   useEffect(() => {
     if (contentTab !== 'details' || !selectedMatchupId || !hasLiveFixtures) return;
     const interval = setInterval(async () => {
@@ -602,7 +602,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           };
         })
       );
-    }, 30_000);
+    }, 15_000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentTab, selectedMatchupId, hasLiveFixtures]);
@@ -710,7 +710,9 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
 
     let interval: ReturnType<typeof setInterval> | null = null;
     if (selectedFixture?.status === 'LIVE') {
-      interval = setInterval(() => fetchRecap(true), 60_000);
+      // 15s while live. Backend caches LIVE stats/events for ~2 min, so most of
+      // these re-reads hit that cache rather than API-Football.
+      interval = setInterval(() => fetchRecap(true), 15_000);
     }
 
     return () => {
