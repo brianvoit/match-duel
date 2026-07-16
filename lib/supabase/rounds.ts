@@ -221,7 +221,7 @@ export async function getRoundFixtures(input: { roundId: string }) {
 
   const { data: fixtures, error: fixtureError } = await service
     .from('fixture')
-    .select('id, starts_at, home_team, away_team, home_score, away_score, home_pen_score, away_pen_score, status, group_name, venue, city, matchday')
+    .select('id, starts_at, home_team, away_team, home_score, away_score, home_pen_score, away_pen_score, status, elapsed_minute, period, last_synced_at, group_name, venue, city, matchday')
     .eq('round_id', input.roundId)
     .order('starts_at', { ascending: true }) as {
     data: FixtureRow[] | null;
@@ -247,6 +247,9 @@ export async function getRoundFixtures(input: { roundId: string }) {
         homePenScore: raw.home_pen_score as number | null ?? null,
         awayPenScore: raw.away_pen_score as number | null ?? null,
         status: fixture.status,
+        elapsedMinute: raw.elapsed_minute as number | null ?? null,
+        period: raw.period as string | null ?? null,
+        lastSyncedAt: raw.last_synced_at as string | null ?? null,
         isLocked: isPickLocked(fixture.starts_at, now),
         myPickSide: null,
         myPickSubmittedAt: null,
@@ -289,7 +292,7 @@ export async function getRoundFixturesForUser(input: {
 
   const { data: fixtures, error: fixtureError } = await service
     .from('fixture')
-    .select('id, starts_at, home_team, away_team, home_score, away_score, home_pen_score, away_pen_score, status, group_name, venue, city, matchday')
+    .select('id, starts_at, home_team, away_team, home_score, away_score, home_pen_score, away_pen_score, status, elapsed_minute, period, last_synced_at, group_name, venue, city, matchday')
     .eq('round_id', input.roundId)
     .order('starts_at', { ascending: true }) as {
     data: FixtureRow[] | null;
@@ -366,6 +369,9 @@ export async function getRoundFixturesForUser(input: {
         homePenScore: (fixture as unknown as Record<string, unknown>).home_pen_score as number | null ?? null,
         awayPenScore: (fixture as unknown as Record<string, unknown>).away_pen_score as number | null ?? null,
         status: fixture.status,
+        elapsedMinute: (fixture as unknown as Record<string, unknown>).elapsed_minute as number | null ?? null,
+        period: (fixture as unknown as Record<string, unknown>).period as string | null ?? null,
+        lastSyncedAt: (fixture as unknown as Record<string, unknown>).last_synced_at as string | null ?? null,
         isLocked: locked,
         myPickSide: existingPick?.side ?? null,
         myPickSubmittedAt: existingPick?.submitted_at ?? null,

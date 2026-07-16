@@ -33,6 +33,8 @@ function toDbFixtureRow(fixture: ProviderFixture) {
     home_pen_score: fixture.homePenScore ?? null,
     away_pen_score: fixture.awayPenScore ?? null,
     status: fixture.status,
+    elapsed_minute: fixture.elapsedMinute ?? null,
+    period: fixture.period ?? null,
     matchday: fixture.matchday ?? null,
     group_name: fixture.groupName ?? null,
     venue: fixture.venue ?? null,

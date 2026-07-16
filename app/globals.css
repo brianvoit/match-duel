@@ -4135,6 +4135,27 @@ select {
   color: var(--text-1);
 }
 
+/* Live match clock shown in place of the kickoff time while a match is in play. */
+.wc-fd-live-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+  color: var(--live, #e5484d);
+}
+.wc-fd-live-clock::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: wc-live-pulse 1.4s ease-in-out infinite;
+}
+@keyframes wc-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 .wc-fd-scorebug-pens {
   font-size: 0.72rem;
   font-weight: 600;

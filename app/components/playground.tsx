@@ -17,7 +17,7 @@ import {
 } from '@/app/components/playground-types';
 import {
   STAGE_POINTS, STAGE_LABELS, fmtStage, computePickPoints, penaltyWinner, isGenuineDraw,
-  computeMatchdays, tournamentMatchday, initials, urlBase64ToUint8Array, StatusGlyph,
+  computeMatchdays, tournamentMatchday, initials, urlBase64ToUint8Array, StatusGlyph, liveMatchClock,
 } from '@/app/components/playground-utils';
 import { avatarColor } from '@/lib/avatar-color';
 import { usePresence } from '@/lib/realtime/usePresence';
@@ -597,6 +597,9 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
             homePenScore: u.homePenScore,
             awayPenScore: u.awayPenScore,
             status: u.status,
+            elapsedMinute: u.elapsedMinute ?? null,
+            period: u.period ?? null,
+            lastSyncedAt: u.lastSyncedAt ?? f.lastSyncedAt,
             isLocked: u.isLocked,
             opponentPickSide: u.opponentPickSide ?? f.opponentPickSide
           };
@@ -1344,10 +1347,12 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 <StatusGlyph status={f.status} isLocked={f.isLocked || iPickFirst === false} size={13} />
               </div>
               <div className="wc-fd-scorebug-kickoff">
-                {new Date(f.startsAt).toLocaleString(undefined, {
-                  weekday: 'short', month: 'short', day: 'numeric',
-                  hour: 'numeric', minute: '2-digit'
-                })}
+                {liveMatchClock(f)
+                  ? <span className="wc-fd-live-clock">{liveMatchClock(f)}</span>
+                  : new Date(f.startsAt).toLocaleString(undefined, {
+                      weekday: 'short', month: 'short', day: 'numeric',
+                      hour: 'numeric', minute: '2-digit'
+                    })}
               </div>
               {(f.venue || f.city) && (
                 <div className="wc-fd-scorebug-venue">

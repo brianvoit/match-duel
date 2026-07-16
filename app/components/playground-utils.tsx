@@ -1,6 +1,27 @@
 import type { Fixture } from '@/app/components/playground-types';
 import { WORLD_CUP_2026_SCORING } from '@/lib/domain/scoring';
 
+/**
+ * The live match clock to show in place of the kickoff date/time, or null when
+ * the fixture isn't live (caller then shows the date/time). Uses the API's
+ * elapsed minute + period; for a running period it extrapolates from the last
+ * sync so the minute keeps ticking between polls, capped so a stalled sync can't
+ * run the clock away.
+ */
+export function liveMatchClock(f: Pick<Fixture, 'status' | 'period' | 'elapsedMinute' | 'lastSyncedAt'>, now: number = Date.now()): string | null {
+  if (f.status !== 'LIVE') return null;
+  const p = (f.period ?? '').toUpperCase();
+  if (p === 'HT') return 'HT';
+  if (p === 'P' || p === 'BP' || p === 'PEN') return 'PENS';
+  if (p === 'BT') return 'ET';                       // break before extra time
+  if (f.elapsedMinute == null) return 'LIVE';
+  const running = p === '1H' || p === '2H' || p === 'ET' || p === '';
+  const driftMin = running && f.lastSyncedAt
+    ? Math.min(5, Math.max(0, Math.floor((now - new Date(f.lastSyncedAt).getTime()) / 60000)))
+    : 0;
+  return `${f.elapsedMinute + driftMin}'`;
+}
+
 // Derived from the single source of truth in lib/domain/scoring.ts — this used to
 // be a hand-maintained copy, which silently drifted out of sync with the server.
 export const STAGE_POINTS: Record<string, number> = WORLD_CUP_2026_SCORING.stagePoints;

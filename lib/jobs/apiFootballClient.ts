@@ -196,6 +196,8 @@ export async function mapToProviderFixtures(
       homePenScore: f.score?.penalty?.home ?? null,
       awayPenScore: f.score?.penalty?.away ?? null,
       status:    mapStatus(f.fixture.status.short),
+      elapsedMinute: f.fixture.status.elapsed ?? null,
+      period:    f.fixture.status.short ?? null,
       matchday:  apiRoundToMatchday(f.league.round),
       groupName: null,  // available via /standings if needed later
       venue:     f.fixture.venue.name ?? null,

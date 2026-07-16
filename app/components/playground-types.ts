@@ -40,6 +40,11 @@ export type Fixture = {
   homePenScore: number | null;
   awayPenScore: number | null;
   status: string;
+  // Live clock (present while LIVE): the API's elapsed minute, its period
+  // short-code (1H/HT/2H/ET/P…), and when we last synced it (for extrapolation).
+  elapsedMinute?: number | null;
+  period?: string | null;
+  lastSyncedAt?: string | null;
   isLocked: boolean;
   myPickSide: 'HOME' | 'AWAY' | null;
   opponentPickSide: 'HOME' | 'AWAY' | null;

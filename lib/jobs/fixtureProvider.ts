@@ -11,6 +11,9 @@ export const providerFixtureSchema = z.object({
   homePenScore: z.number().int().nullable().optional(),
   awayPenScore: z.number().int().nullable().optional(),
   status: z.enum(['SCHEDULED', 'LIVE', 'FINAL', 'POSTPONED', 'CANCELED']),
+  // Live clock: the API's elapsed minute and period short-code (1H/HT/2H/ET/P…).
+  elapsedMinute: z.number().int().nullable().optional(),
+  period: z.string().nullable().optional(),
   matchday: z.number().int().positive().nullable().optional(),
   groupName: z.string().nullable().optional(),
   venue: z.string().nullable().optional(),
