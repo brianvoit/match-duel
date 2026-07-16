@@ -1,6 +1,7 @@
 import type { Slot } from '@/lib/domain/bracket';
 import { ANNEX_C } from '@/lib/domain/annexC';
 import { isPlaceholderTeam } from '@/lib/domain/bracket';
+import { teamCode } from '@/lib/data/teamInfo';
 
 // ── Group standings + knockout slot resolution (pure, testable) ──────────────
 
@@ -203,10 +204,16 @@ export interface BracketUpdate {
  * Reconcile our knockout slots against the real API draw. Each knockout match
  * has at least one side we've already resolved (a group winner/runner-up), and
  * every team appears in exactly one match per round — so we match an API fixture
- * to our slot by that shared real team, then adopt the API's *other* team for the
- * still-unknown side (e.g. the 3rd-place opponent), keeping our home/away
- * orientation. This fills 3rd-place slots and auto-corrects any Annex C gap the
- * moment the draw is published, and links the real fixture id for live scores.
+ * to our slot by that shared real team (compared by code, so the API's name
+ * variants collapse), then **adopt the API's home/away orientation** as the
+ * source of truth: the API's home team becomes our home side. We keep our own
+ * canonical name for a side we already know, and take the API's name for a
+ * still-placeholder side (e.g. an unfilled 3rd-place opponent).
+ *
+ * When this reverses a slot whose teams were already resolved, the fixture's
+ * scores and its picks must be swapped to match (see apply_bracket_link) so each
+ * pick stays on its chosen team. This function is pure — it only reports the
+ * intended home/away; the caller performs the atomic swap.
  *
  * Pure and defensive: only acts on API fixtures with two real teams, never
  * touches locked slots, and matches at most one API fixture per slot.
@@ -217,29 +224,24 @@ export function reconcileApiKnockouts(ours: OurKnockoutSlot[], api: ApiKnockout[
 
   for (const a of api) {
     if (!a.homeTeam || !a.awayTeam || isPlaceholderTeam(a.homeTeam) || isPlaceholderTeam(a.awayTeam)) continue;
-    const apiTeams = [a.homeTeam, a.awayTeam];
+    const apiCodes = [teamCode(a.homeTeam), teamCode(a.awayTeam)];
 
     const slot = ours.find((s) =>
       !usedSlots.has(s.fixtureId) &&
       !s.locked &&
       s.stage === a.stage &&
-      ((!isPlaceholderTeam(s.homeTeam) && apiTeams.includes(s.homeTeam)) ||
-       (!isPlaceholderTeam(s.awayTeam) && apiTeams.includes(s.awayTeam))),
+      ((!isPlaceholderTeam(s.homeTeam) && apiCodes.includes(teamCode(s.homeTeam))) ||
+       (!isPlaceholderTeam(s.awayTeam) && apiCodes.includes(teamCode(s.awayTeam)))),
     );
     if (!slot) continue;
     usedSlots.add(slot.fixtureId);
 
-    // Keep whichever real side of ours matched; fill the opposite side with the
-    // API's other team (preserves our bracket home/away orientation).
-    let home = slot.homeTeam;
-    let away = slot.awayTeam;
-    if (!isPlaceholderTeam(slot.homeTeam) && apiTeams.includes(slot.homeTeam)) {
-      home = slot.homeTeam;
-      away = a.homeTeam === slot.homeTeam ? a.awayTeam : a.homeTeam;
-    } else {
-      away = slot.awayTeam;
-      home = a.homeTeam === slot.awayTeam ? a.awayTeam : a.homeTeam;
-    }
+    // Adopt the API's home/away orientation. Use our resolved canonical name for
+    // a side we already know (matched by code); take the API's name otherwise.
+    const known = [slot.homeTeam, slot.awayTeam].filter((t) => !isPlaceholderTeam(t));
+    const canonical = (apiTeam: string) => known.find((t) => teamCode(t) === teamCode(apiTeam)) ?? apiTeam;
+    const home = canonical(a.homeTeam);
+    const away = canonical(a.awayTeam);
 
     if (home !== slot.homeTeam || away !== slot.awayTeam || slot.externalId !== a.apiId) {
       updates.push({ fixtureId: slot.fixtureId, homeTeam: home, awayTeam: away, externalId: a.apiId, kickoff: a.kickoff });

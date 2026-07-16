@@ -124,20 +124,34 @@ describe('reconcileApiKnockouts (API-first)', () => {
   const ko = (over: Partial<ApiKnockout>): ApiKnockout =>
     ({ apiId: '900', stage: 'ROUND_OF_32', homeTeam: 'Spain', awayTeam: 'Croatia', kickoff: '2026-06-29T20:00:00Z', ...over });
 
-  it('fills a 3rd-place slot from the API, keeping our orientation', () => {
+  it('fills a placeholder side from the API in the API orientation', () => {
     const [u] = reconcileApiKnockouts([slot({})], [ko({})]);
     expect(u).toMatchObject({ fixtureId: 'f', homeTeam: 'Spain', awayTeam: 'Croatia', externalId: '900' });
   });
 
-  it('handles a swapped API orientation (shared team stays on our side)', () => {
+  it('adopts a reversed API orientation, keeping our canonical name', () => {
+    // API says Croatia is home — we adopt that; our known side (Spain) keeps its name.
     const [u] = reconcileApiKnockouts([slot({})], [ko({ homeTeam: 'Croatia', awayTeam: 'Spain' })]);
-    expect(u).toMatchObject({ homeTeam: 'Spain', awayTeam: 'Croatia' }); // our home (Spain) preserved
+    expect(u).toMatchObject({ homeTeam: 'Croatia', awayTeam: 'Spain' });
   });
 
-  it('links a fully-resolved fixed match without changing teams', () => {
-    const s = slot({ homeTeam: 'A2', awayTeam: 'B2', bracketCode: 'M73' });
-    const [u] = reconcileApiKnockouts([s], [ko({ homeTeam: 'A2', awayTeam: 'B2' })]);
-    expect(u).toMatchObject({ homeTeam: 'A2', awayTeam: 'B2', externalId: '900' });
+  it('flips a fully-resolved match to the API orientation', () => {
+    const s = slot({ homeTeam: 'Argentina', awayTeam: 'England' });
+    const [u] = reconcileApiKnockouts([s], [ko({ homeTeam: 'England', awayTeam: 'Argentina' })]);
+    expect(u).toMatchObject({ homeTeam: 'England', awayTeam: 'Argentina', externalId: '900' });
+  });
+
+  it('matches by team code across API name variants', () => {
+    // Our "Czechia" vs the API's "Czech Republic" (both CZE); our name is kept.
+    const s = slot({ homeTeam: 'Czechia', awayTeam: '3rd Place' });
+    const [u] = reconcileApiKnockouts([s], [ko({ homeTeam: 'Croatia', awayTeam: 'Czech Republic' })]);
+    expect(u).toMatchObject({ homeTeam: 'Croatia', awayTeam: 'Czechia' });
+  });
+
+  it('links a match already in API orientation without changing teams', () => {
+    const s = slot({ homeTeam: 'Spain', awayTeam: 'Croatia' });
+    const [u] = reconcileApiKnockouts([s], [ko({ homeTeam: 'Spain', awayTeam: 'Croatia' })]);
+    expect(u).toMatchObject({ homeTeam: 'Spain', awayTeam: 'Croatia', externalId: '900' });
   });
 
   it('never touches a locked slot', () => {

@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
-import { BRACKET, slotLabel } from '@/lib/domain/bracket';
+import { BRACKET, slotLabel, isPlaceholderTeam } from '@/lib/domain/bracket';
+import { teamCode } from '@/lib/data/teamInfo';
 import { buildGroupTables, computeThirdsByMatch, resolveSlot, decideMatch, reconcileApiKnockouts } from '@/lib/domain/bracketResolve';
 import type { BracketFixture, OurKnockoutSlot, ApiKnockout } from '@/lib/domain/bracketResolve';
 import { fetchApiFootballFixtures, apiRoundToStage, WC_LEAGUE_ID } from '@/lib/jobs/apiFootballClient';
@@ -222,13 +223,26 @@ export async function reconcileBracketFromApi(input?: { tournamentId?: string })
     .filter((x): x is ApiKnockout => x !== null);
 
   const updates = reconcileApiKnockouts(ours, api);
+  const slotById = new Map(ours.map((s) => [s.fixtureId, s]));
   for (const u of updates) {
-    await service.from('fixture').update({
-      home_team: u.homeTeam,
-      away_team: u.awayTeam,
-      external_provider_id: u.externalId,
-      ...(u.kickoff ? { starts_at: u.kickoff } : {}),
-    }).eq('id', u.fixtureId);
+    const slot = slotById.get(u.fixtureId);
+    // A flip = a team we'd already resolved is now on the *other* side — either
+    // our old home is now the away team, or our old away is now the home team.
+    // Only then must scores + pick sides be swapped to follow the new orientation
+    // (a plain link or a placeholder fill leaves them untouched). apply_bracket_link
+    // does the whole thing atomically so picks can never end up half-migrated.
+    const flip = Boolean(slot && (
+      (!isPlaceholderTeam(slot.homeTeam) && teamCode(u.awayTeam) === teamCode(slot.homeTeam)) ||
+      (!isPlaceholderTeam(slot.awayTeam) && teamCode(u.homeTeam) === teamCode(slot.awayTeam))
+    ));
+    await service.rpc('apply_bracket_link', {
+      p_fixture_id: u.fixtureId,
+      p_home: u.homeTeam,
+      p_away: u.awayTeam,
+      p_ext: u.externalId,
+      p_kickoff: u.kickoff ?? null,
+      p_flip: flip,
+    });
   }
 
   return { linked: updates.length };
