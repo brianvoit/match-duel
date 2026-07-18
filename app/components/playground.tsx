@@ -1257,8 +1257,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   // ── Render: Fixture detail (content panel) ─────────────────────────────────
 
   function renderFixtureDetail() {
-    const stage = currentRound?.stage ?? '';
-
     if (!selectedMatchupId) {
       return (
         <div className="wc-content-empty">
@@ -1286,6 +1284,11 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       : Object.keys(completedRoundFixtures).find((rid) => completedRoundFixtures[rid]?.some((x) => x.id === f.id));
     const fRound = allRounds.find((r) => r.id === fRoundId);
     const isFutureRoundPick = !!(fRound && currentRound && fRound.order_index > currentRound.order_index);
+    // Use the SELECTED fixture's own round for its stage label + points — not the
+    // matchup's current round, which mislabels a fixture from a different round
+    // (e.g. viewing the Final while Third Place is the current round showed
+    // "Third Place", and scored it with the wrong stage multiplier).
+    const stage = fRound?.stage ?? currentRound?.stage ?? '';
     const myPoints = computePickPoints(f, pickMap[f.id] ?? f.myPickSide, stage);
     const firstPickerId = pickOrder[f.id];
     const iPickFirst =
@@ -1324,7 +1327,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
 
           {/* Group / stage label */}
           <div className="wc-fd-scorebug-group">
-            {f.groupName ? `Group ${f.groupName}` : currentRound ? fmtStage(currentRound.stage) : ''}
+            {f.groupName ? `Group ${f.groupName}` : stage ? fmtStage(stage) : ''}
           </div>
 
           {/* Teams + score */}
