@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
+import { teamCode } from '@/lib/data/teamInfo';
 import type {
   PreMatchData, PreMatchPredictions, GroupStandingRow,
   TeamGoals, InjuryEntry, MatchOdds, TopScorer, StyleComparison,
@@ -15,7 +16,11 @@ async function apiFetch(key: string, path: string) {
   try {
     const res = await fetch(`${BASE}${path}`, {
       headers: { 'x-apisports-key': key },
-      next: { revalidate: 3600 }, // 1-hour cache
+      // Short window: dedupes bursts but doesn't lock an API error (rate limit,
+      // etc.) in for an hour — API-Football returns 200 with an errors body, so a
+      // failed call would otherwise be cached as a "success" and starve every
+      // retry of team ids / form data.
+      next: { revalidate: 60 },
     });
     const data = await res.json();
     if (data.errors && Object.keys(data.errors).length) return null;
@@ -153,10 +158,17 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   // fixture-by-id feed so form/comparison still populate when predictions is empty.
   const pred = Array.isArray(predRaw) ? predRaw[0] : predRaw;
   const fixById = Array.isArray(fixByIdRaw) ? fixByIdRaw[0] : null;
-  const homeTeamId: number | null =
-    pred?.teams?.home?.id ?? (fixById as { teams?: { home?: { id?: number } } } | null)?.teams?.home?.id ?? null;
-  const awayTeamId: number | null =
-    pred?.teams?.away?.id ?? (fixById as { teams?: { away?: { id?: number } } } | null)?.teams?.away?.id ?? null;
+  // Map the API's two teams to OUR fixture's home/away by code. The API's
+  // orientation can be reversed vs ours for knockout fixtures, so keying off the
+  // API's "home" directly would attribute the form/comparison to the wrong side.
+  type ApiTeam = { id?: number; name?: string };
+  const t = (x: { teams?: { home?: ApiTeam; away?: ApiTeam } } | null | undefined) => [x?.teams?.home, x?.teams?.away];
+  const apiTeams = [...t(pred), ...t(fixById as { teams?: { home?: ApiTeam; away?: ApiTeam } } | null)]
+    .filter((x): x is ApiTeam => Boolean(x?.id && x?.name));
+  const teamIdFor = (name: string): number | null =>
+    apiTeams.find((x) => teamCode(x.name!) === teamCode(name))?.id ?? null;
+  const homeTeamId: number | null = teamIdFor(fixture.home_team);
+  const awayTeamId: number | null = teamIdFor(fixture.away_team);
   const [homeFixRaw, awayFixRaw] = await Promise.all([
     homeTeamId ? apiFetch(key, `/fixtures?team=${homeTeamId}&last=5`) : Promise.resolve(null),
     awayTeamId ? apiFetch(key, `/fixtures?team=${awayTeamId}&last=5`) : Promise.resolve(null),
@@ -306,13 +318,16 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     });
   }
 
-  // Cache everything EXCEPT standings (standings stays fresh per-request). Skip
-  // caching when the recent-fixtures feed failed for a team that has an id —
-  // otherwise a transient miss would freeze empty form/comparison for hours.
+  // Cache everything EXCEPT standings (standings stays fresh per-request). Only
+  // cache a result we actually populated: if team-id resolution failed, or the
+  // recent-fixtures feed failed for a team that has an id, a transient API miss
+  // would otherwise freeze an empty form/comparison card for hours. Skipping the
+  // write lets the next view retry instead.
   const last5Failed =
     (homeTeamId && !Array.isArray(homeFixRaw)) || (awayTeamId && !Array.isArray(awayFixRaw));
+  const teamIdsResolved = Boolean(homeTeamId && awayTeamId);
   const payload = { homeForm, awayForm, predictions, standings: null, homeGoals, awayGoals, injuries, odds, topScorers, comparison };
-  if (!last5Failed) {
+  if (teamIdsResolved && !last5Failed) {
     await setCached(id, 'pre_match', payload as unknown as Record<string, unknown>);
   }
   return NextResponse.json({ ok: true, ...base, ...payload, standings } satisfies PreMatchData & { ok: boolean });
