@@ -2980,6 +2980,7 @@ select {
 /* ── Fixture detail panel ────────────────────────────────────────────────────── */
 
 .wc-fd-scorebug {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 20px 24px 18px;
@@ -2987,13 +2988,41 @@ select {
   text-align: center;
 }
 
-/* Detail body — full width on mobile, centred 3/5 on desktop */
-.wc-fd-share-row {
-  display: flex;
+/* Share glyph (upload icon) in the scorebug's top-right corner. */
+.wc-fd-share-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  margin: 2px 0 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  color: var(--text-1);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
+.wc-fd-share-btn:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--glass-strong) 70%, var(--accent) 25%);
+}
+.wc-fd-share-btn:disabled { cursor: default; opacity: 0.55; }
+.wc-fd-share-btn svg { display: block; }
+.wc-fd-share-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: wc-share-spin 0.7s linear infinite;
+}
+@keyframes wc-share-spin { to { transform: rotate(360deg); } }
 
+/* Detail body — full width on mobile, centred 3/5 on desktop */
 .wc-fd-detail-body {
   display: flex;
   flex-direction: column;

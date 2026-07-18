@@ -1301,6 +1301,27 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       <div className="wc-stack">
         {/* Large scorebug — matches feed card style */}
         <div className="wc-fd-scorebug">
+          {/* Share the match as an image (copy/paste into a chat) */}
+          <button
+            className="wc-fd-share-btn"
+            type="button"
+            disabled={sharingCard}
+            aria-label="Share match card"
+            title="Share match card"
+            onClick={() => shareMatchCard(f, fRound?.stage ?? currentRound?.stage ?? 'GROUP')}
+          >
+            {sharingCard ? (
+              <span className="wc-fd-share-spinner" aria-hidden="true" />
+            ) : (
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+                <polyline points="16 6 12 2 8 6" />
+                <line x1="12" y1="2" x2="12" y2="15" />
+              </svg>
+            )}
+          </button>
+
           {/* Group / stage label */}
           <div className="wc-fd-scorebug-group">
             {f.groupName ? `Group ${f.groupName}` : currentRound ? fmtStage(currentRound.stage) : ''}
@@ -1388,17 +1409,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           </div>
         </div>
 
-        {/* Share the match as an image (copy/paste into a chat) */}
-        <div className="wc-fd-share-row">
-          <button
-            className="wc-btn wc-btn-sm"
-            type="button"
-            disabled={sharingCard}
-            onClick={() => shareMatchCard(f, fRound?.stage ?? currentRound?.stage ?? 'GROUP')}
-          >
-            {sharingCard ? 'Creating…' : 'Share match card'}
-          </button>
-        </div>
 
         {/* ── Detail body — centred 3/5 on desktop ─────────────────── */}
         <div className="wc-fd-detail-body">
