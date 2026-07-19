@@ -5,6 +5,9 @@ import type { PreMatchData } from '@/app/components/playground-types';
 
 interface PreMatchPanelProps {
   data: PreMatchData;
+  // In knockout stages a draw can't stand — level after ET goes to a shootout —
+  // so the "draw" probability is really the chance the match reaches penalties.
+  isKnockout?: boolean;
 }
 
 function oddsToImplied(odd: string): string {
@@ -40,7 +43,7 @@ function CompBar({ label, home, away }: { label: string; home: number; away: num
   );
 }
 
-export function PreMatchPanel({ data }: PreMatchPanelProps) {
+export function PreMatchPanel({ data, isKnockout = false }: PreMatchPanelProps) {
   const { homeTeam, awayTeam, predictions, standings, injuries, odds, topScorers, comparison } = data;
 
   // Form + Style Comparison always render (with placeholders), so the panel is always shown.
@@ -59,7 +62,7 @@ export function PreMatchPanel({ data }: PreMatchPanelProps) {
             </div>
             <div className="wc-pm-prob-draw">
               <div className="wc-pm-prob-pct wc-pm-prob-pct--draw">{predictions.drawPercent}%</div>
-              <div className="wc-pm-prob-name">Draw</div>
+              <div className="wc-pm-prob-name">{isKnockout ? 'Penalties' : 'Draw'}</div>
             </div>
             <div className="wc-pm-prob-team">
               <div className="wc-pm-prob-pct wc-pm-prob-pct--away">{predictions.awayPercent}%</div>

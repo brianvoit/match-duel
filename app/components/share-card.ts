@@ -15,13 +15,17 @@ export interface ShareGoal {
   detail?: string | null;
 }
 
-/**
- * Drawn as an initial bubble rather than the real avatar: the avatars are hosted
- * cross-origin, and painting them would taint the canvas and break toBlob().
- */
 export interface SharePicker {
   name: string;
   side: 'HOME' | 'AWAY' | null;
+  /** The player's current tournament points total (their live standing). */
+  currentPoints?: number;
+  /**
+   * Profile photo URL. Loaded with crossOrigin='anonymous' so painting it doesn't
+   * taint the canvas (Supabase storage / Google avatars send CORS headers); a
+   * failed/absent load falls back to the initial bubble.
+   */
+  avatarUrl?: string | null;
 }
 
 export interface ShareCardOptions {
@@ -161,10 +165,45 @@ function strikeThrough(ctx: CanvasRenderingContext2D, text: string, cx: number, 
   ctx.restore();
 }
 
+/**
+ * Load an avatar for painting onto the canvas. crossOrigin='anonymous' asks the
+ * host for CORS headers so the canvas stays untainted and toBlob() keeps working;
+ * any failure resolves to null so the caller draws the initial bubble instead.
+ */
+function loadAvatar(url: string | null | undefined): Promise<HTMLImageElement | null> {
+  if (!url) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
 export async function renderMatchShareCard(o: ShareCardOptions): Promise<Blob> {
   const W = 1200;
-  const H = 820;
   const SCALE = 2;
+
+  // Goal rows drive the card height: with no goals the centre collapses to a
+  // compact card; each goal — plus the half-time divider — adds a row so the
+  // image grows to fit the whole story (extra-time and shootout goals included).
+  const firstHalf = o.goals.filter((g) => g.minute <= 45);
+  const secondHalf = o.goals.filter((g) => g.minute > 45);
+  const htRow = secondHalf.length && firstHalf.length ? 1 : 0;
+  const nRows = o.goals.length + htRow;
+  const GOALS_TOP = 392;   // baseline of the first goal / HT row
+  const ROW_H = 46;
+  const stripH = 188;      // duel strip at the foot of the card
+  const COMP_GAP = 40;     // room for the competition/round line above the strip
+  const contentBottom = nRows > 0
+    ? GOALS_TOP + (nRows - 1) * ROW_H + 22  // just past the last goal row
+    : 356;                                  // just below the team names when empty
+  const H = contentBottom + COMP_GAP + stripH;
+
+  // Preload both avatars (CORS-safe) before we start painting the strip.
+  const avatarByPicker = new Map<SharePicker, HTMLImageElement | null>();
+  await Promise.all(o.pickers.map(async (p) => avatarByPicker.set(p, await loadAvatar(p.avatarUrl))));
 
   const canvas = document.createElement('canvas');
   canvas.width = W * SCALE;
@@ -226,11 +265,9 @@ export async function renderMatchShareCard(o: ShareCardOptions): Promise<Blob> {
   if (win === 'AWAY') strikeThrough(ctx, o.homeTeam, homeX, 320);
   if (win === 'HOME') strikeThrough(ctx, o.awayTeam, awayX, 320);
 
-  // ── Goals, split by half ───────────────────────────────────────────────────
-  const firstHalf = o.goals.filter((g) => g.minute <= 45);
-  const secondHalf = o.goals.filter((g) => g.minute > 45);
+  // ── Goals, split by half (firstHalf/secondHalf computed above for sizing) ──
   let running = { h: 0, a: 0 };
-  let y = 400;
+  let y = GOALS_TOP;
 
   // The running score owns the exact centre; each scorer sits on their own
   // team's side of it, with the minute nearest the middle. GAP keeps the minute
@@ -274,8 +311,7 @@ export async function renderMatchShareCard(o: ShareCardOptions): Promise<Blob> {
   }
   for (const g of secondHalf) drawGoal(g);
 
-  // ── Duel strip: who picked whom, and what's on the table ───────────────────
-  const stripH = 156;
+  // ── Duel strip: who picked whom, their live totals, and what's on the table ─
   const stripY = H - stripH;
   ctx.fillStyle = 'rgba(0,0,0,0.38)';
   ctx.fillRect(0, stripY, W, stripH);
@@ -293,23 +329,43 @@ export async function renderMatchShareCard(o: ShareCardOptions): Promise<Blob> {
     ctx.textAlign = 'center';
     ctx.globalAlpha = lost ? 0.55 : 1;
 
-    // Avatar bubble with the player's initial.
-    const initial = (p?.name ?? '?').trim().charAt(0).toUpperCase();
+    // Profile photo clipped into a circle, or an initial bubble if none loaded.
+    const cy = stripY + 46;
+    const r = 24;
+    const img = p ? avatarByPicker.get(p) : null;
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, stripY + 54, 26, 0, Math.PI * 2);
-    ctx.fillStyle = won ? '#fff' : 'rgba(255,255,255,0.28)';
-    ctx.fill();
-    ctx.font = font(800, 26, FONT);
-    ctx.fillStyle = won ? '#111' : '#fff';
-    ctx.fillText(initial, cx, stripY + 63);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    if (img) {
+      ctx.clip();
+      ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = won ? '#fff' : 'rgba(255,255,255,0.45)';
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = won ? '#fff' : 'rgba(255,255,255,0.28)';
+      ctx.fill();
+      ctx.restore();
+      ctx.font = font(800, 24, FONT);
+      ctx.fillStyle = won ? '#111' : '#fff';
+      ctx.fillText((p?.name ?? '?').trim().charAt(0).toUpperCase(), cx, cy + 9);
+    }
 
-    ctx.font = font(700, 28, FONT);
+    ctx.font = font(700, 26, FONT);
     ctx.fillStyle = '#fff';
-    ctx.fillText(p?.name ?? '—', cx, stripY + 108);
+    ctx.fillText(fitText(ctx, p?.name ?? '—', 320), cx, stripY + 90);
 
-    ctx.font = font(500, 24, FONT);
+    // Current tournament points total (their standing), between name and team.
+    ctx.font = font(800, 30, FONT);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(p?.currentPoints != null ? `${p.currentPoints} pts` : '—', cx, stripY + 128);
+
+    ctx.font = font(500, 21, FONT);
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText(team, cx, stripY + 140);
+    ctx.fillText(fitText(ctx, team, 320), cx, stripY + 158);
     ctx.globalAlpha = 1;
   };
 
@@ -320,15 +376,15 @@ export async function renderMatchShareCard(o: ShareCardOptions): Promise<Blob> {
   const pill = win ? `+${o.pointsAtStake}` : `${o.pointsAtStake} PTS`;
   ctx.font = font(800, 30, FONT);
   const pw = ctx.measureText(pill).width + 44;
-  roundRect(ctx, midX - pw / 2, stripY + 44, pw, 52, 26);
+  roundRect(ctx, midX - pw / 2, stripY + 56, pw, 52, 26);
   ctx.fillStyle = 'rgba(255,255,255,0.14)';
   ctx.fill();
   ctx.textAlign = 'center';
   ctx.fillStyle = '#fff';
-  ctx.fillText(pill, midX, stripY + 80);
+  ctx.fillText(pill, midX, stripY + 92);
   ctx.font = font(500, 20, FONT);
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fillText(win ? 'awarded' : 'on the table', midX, stripY + 120);
+  ctx.fillText(win ? 'awarded' : 'on the table', midX, stripY + 132);
 
   // ── Competition + round ────────────────────────────────────────────────────
   ctx.font = font(600, 24, FONT);

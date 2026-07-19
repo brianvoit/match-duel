@@ -253,10 +253,17 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   // Win-probability percentages need the predictions payload; only shown when real.
   if (pred?.predictions) {
     const p = pred.predictions;
+    // The percentages follow the API's OWN home/away, which is reversed vs ours
+    // for knockout fixtures the bracket seeded the other way round. Attribute
+    // each percentage to the correct side by matching the predictions payload's
+    // home team to our home team by code (otherwise the favorite shows up on the
+    // wrong side — e.g. France's win % appearing under England).
+    const predHomeName = (pred as { teams?: { home?: ApiTeam } }).teams?.home?.name;
+    const predReversed = predHomeName ? teamCode(predHomeName) !== teamCode(fixture.home_team) : false;
     predictions = {
-      homePercent: pct(p.percent?.home),
+      homePercent: pct(predReversed ? p.percent?.away : p.percent?.home),
       drawPercent: pct(p.percent?.draw),
-      awayPercent: pct(p.percent?.away),
+      awayPercent: pct(predReversed ? p.percent?.home : p.percent?.away),
       advice: p.advice ?? '',
       homeForm,
       awayForm,

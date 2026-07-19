@@ -1099,6 +1099,15 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
         ?? selectedMatchup?.opponentEmail?.split('@')[0]
         ?? 'Opponent';
 
+      // Live standing totals — same numbers as the header H2H scorebug
+      // (settled tournament points + this round's provisional points). Resolve
+      // "me" by participantId like the scorebug does: the email match is
+      // unreliable here and silently zeroed my own total.
+      const myEntry = standing.find((s) => s.participantId === myParticipantId);
+      const oppEntry = standing.find((s) => s.participantId !== myParticipantId);
+      const myTotal = (myEntry?.tournamentPoints ?? 0) + provisionalPoints.mine;
+      const oppTotal = (oppEntry?.tournamentPoints ?? 0) + provisionalPoints.opp;
+
       return renderMatchShareCard({
         homeTeam: f.homeTeam,
         awayTeam: f.awayTeam,
@@ -1111,8 +1120,8 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
         stageLabel: fmtStage(stage),
         goals,
         pickers: [
-          { name: myName, side: pickMap[f.id] ?? f.myPickSide ?? null },
-          { name: oppName, side: f.opponentPickSide ?? null },
+          { name: myName, side: pickMap[f.id] ?? f.myPickSide ?? null, currentPoints: myTotal, avatarUrl: userAvatarUrl },
+          { name: oppName, side: f.opponentPickSide ?? null, currentPoints: oppTotal, avatarUrl: oppAvatarUrl },
         ],
         pointsAtStake: STAGE_POINTS[stage] ?? 1,
       });
@@ -1284,6 +1293,14 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       : Object.keys(completedRoundFixtures).find((rid) => completedRoundFixtures[rid]?.some((x) => x.id === f.id));
     const fRound = allRounds.find((r) => r.id === fRoundId);
     const isFutureRoundPick = !!(fRound && currentRound && fRound.order_index > currentRound.order_index);
+    // The pick unlocks when the round immediately BEFORE this fixture's round
+    // settles (rounds complete in order). Name THAT round — not the matchup's
+    // current round, which is wrong for any fixture more than one round ahead
+    // (e.g. clicking the Final during the Round of 32 should point to the round
+    // that actually gates it, the Third Place match).
+    const gatingRound = fRound
+      ? allRounds.find((r) => r.order_index === fRound.order_index - 1)
+      : null;
     // Use the SELECTED fixture's own round for its stage label + points — not the
     // matchup's current round, which mislabels a fixture from a different round
     // (e.g. viewing the Final while Third Place is the current round showed
@@ -1432,7 +1449,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 {isFutureRoundPick ? (
                   /* Next round(s) stay locked until the current round is settled */
                   <p className="wc-pick-hint wc-pick-hint--locked" style={{ margin: '0 0 6px' }}>
-                    🔒 Picks open once {currentRound ? fmtStage(currentRound.stage) : 'the current round'} is settled.
+                    Picks open once {(gatingRound ?? currentRound)?.stage ? fmtStage((gatingRound ?? currentRound)!.stage) : 'the current round'} is settled.
                   </p>
                 ) : f.isLocked ? (
                   /* Post-kickoff: show picks with chose/assigned context */
@@ -1502,12 +1519,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
               {/* Points outcome */}
               {f.status === 'FINAL' && myPoints !== null && (
                 <div className={`wc-fd-outcome${myPoints > 0 ? ' wc-fd-outcome--scored' : isGenuineDraw(f) ? ' wc-fd-outcome--draw' : ' wc-fd-outcome--missed'}`}>
-                  {myPoints > 0
-                    ? `Win — +${myPoints} pts`
-                    : isGenuineDraw(f)
-                      ? 'Draw — 0 pts'
-                      : 'Loss — 0 pts'
-                  }
+                  {`${(displayName || userEmail.split('@')[0]).trim().split(/\s+/)[0]}: ${myPoints}`}
                 </div>
               )}
             </>
@@ -1515,7 +1527,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
         })()}
 
         {/* ── Pre-match context ─────────────────────────────────────── */}
-        {preMatchData && <PreMatchPanel data={preMatchData} />}
+        {preMatchData && <PreMatchPanel data={preMatchData} isKnockout={!!stage && stage !== 'GROUP'} />}
 
         {/* ── Tournament form ───────────────────────────────────────── */}
         {teamForm && (teamForm.homeFixtures.length > 0 || teamForm.awayFixtures.length > 0) && (() => {
