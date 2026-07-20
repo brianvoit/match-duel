@@ -80,6 +80,43 @@ const LATER: BracketMatch[] = [
 
 export const BRACKET: BracketMatch[] = [...ROUND_OF_32, ...ROUND_OF_16, ...LATER];
 
+// ── Women's World Cup 2027 (32 teams / 8 groups) ─────────────────────────────
+//
+// 32-team format: top two of eight groups (A–H) advance straight to the Round of
+// 16 — no Round of 32 and no best-third-place qualification (so no `third` slots).
+// This is the canonical single-elimination tree (as used at WWC 2023 / men's
+// 1998–2022); the exact kickoff schedule/venues fill in from API-Football once the
+// 2027 fixtures publish, and reconcileBracketFromApi adopts the real draw's
+// orientation. Codes are prefixed `W` so they never collide with the men's tree.
+const WOMENS_ROUND_OF_16: BracketMatch[] = [
+  { code: 'WR49', stage: 'ROUND_OF_16', home: w('A'), away: r('B'), startsAt: '2027-07-04T16:00:00Z', venue: null, city: null },
+  { code: 'WR50', stage: 'ROUND_OF_16', home: w('C'), away: r('D'), startsAt: '2027-07-04T20:00:00Z', venue: null, city: null },
+  { code: 'WR51', stage: 'ROUND_OF_16', home: w('B'), away: r('A'), startsAt: '2027-07-05T16:00:00Z', venue: null, city: null },
+  { code: 'WR52', stage: 'ROUND_OF_16', home: w('D'), away: r('C'), startsAt: '2027-07-05T20:00:00Z', venue: null, city: null },
+  { code: 'WR53', stage: 'ROUND_OF_16', home: w('E'), away: r('F'), startsAt: '2027-07-06T16:00:00Z', venue: null, city: null },
+  { code: 'WR54', stage: 'ROUND_OF_16', home: w('G'), away: r('H'), startsAt: '2027-07-06T20:00:00Z', venue: null, city: null },
+  { code: 'WR55', stage: 'ROUND_OF_16', home: w('F'), away: r('E'), startsAt: '2027-07-07T16:00:00Z', venue: null, city: null },
+  { code: 'WR56', stage: 'ROUND_OF_16', home: w('H'), away: r('G'), startsAt: '2027-07-07T20:00:00Z', venue: null, city: null },
+];
+
+const WOMENS_LATER: BracketMatch[] = [
+  { code: 'WQF1', stage: 'QUARTERFINAL', home: mw('WR49'), away: mw('WR50'), startsAt: '2027-07-10T16:00:00Z', venue: null, city: null },
+  { code: 'WQF2', stage: 'QUARTERFINAL', home: mw('WR53'), away: mw('WR54'), startsAt: '2027-07-10T20:00:00Z', venue: null, city: null },
+  { code: 'WQF3', stage: 'QUARTERFINAL', home: mw('WR51'), away: mw('WR52'), startsAt: '2027-07-11T16:00:00Z', venue: null, city: null },
+  { code: 'WQF4', stage: 'QUARTERFINAL', home: mw('WR55'), away: mw('WR56'), startsAt: '2027-07-11T20:00:00Z', venue: null, city: null },
+  { code: 'WSF1', stage: 'SEMIFINAL', home: mw('WQF1'), away: mw('WQF2'), startsAt: '2027-07-14T20:00:00Z', venue: null, city: null },
+  { code: 'WSF2', stage: 'SEMIFINAL', home: mw('WQF3'), away: mw('WQF4'), startsAt: '2027-07-15T20:00:00Z', venue: null, city: null },
+  { code: 'WTP', stage: 'THIRD_PLACE', home: ml('WSF1'), away: ml('WSF2'), startsAt: '2027-07-24T20:00:00Z', venue: null, city: null },
+  { code: 'WF', stage: 'FINAL', home: mw('WSF1'), away: mw('WSF2'), startsAt: '2027-07-25T19:00:00Z', venue: null, city: null },
+];
+
+export const BRACKET_WOMENS_32: BracketMatch[] = [...WOMENS_ROUND_OF_16, ...WOMENS_LATER];
+
+/** The bracket tree for a tournament's format. Defaults to the men's 48-team tree. */
+export function bracketForFormat(format: string | null | undefined): BracketMatch[] {
+  return format === 'WOMENS_32' ? BRACKET_WOMENS_32 : BRACKET;
+}
+
 /** Human-readable placeholder shown until a slot resolves to a real team. */
 export function slotLabel(slot: Slot): string {
   switch (slot.kind) {

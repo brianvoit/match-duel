@@ -33,19 +33,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const season = serverEnv.API_FOOTBALL_SEASON;
-
-    // Find the active tournament
+    // Find the active tournament + its API-Football target (per-tournament league
+    // and season, falling back to the men's WC defaults if unset).
     const service = createServiceRoleClient();
     const { data: tournament } = await service
       .from('tournament')
-      .select('id, year')
+      .select('id, year, league_id, season')
       .eq('is_active', true)
-      .maybeSingle() as { data: { id: string; year: number } | null };
+      .maybeSingle() as { data: { id: string; year: number; league_id: number | null; season: number | null } | null };
 
     if (!tournament) {
       return NextResponse.json({ ok: false, error: 'No active tournament.' }, { status: 404 });
     }
+
+    const leagueId = tournament.league_id ?? WC_LEAGUE_ID;
+    const season = tournament.season ?? serverEnv.API_FOOTBALL_SEASON;
 
     // 1. Fetch from API-Football
     const searchParams = new URL(req.url).searchParams;
@@ -82,7 +84,7 @@ export async function POST(req: NextRequest) {
     let apiFixtures: Awaited<ReturnType<typeof fetchApiFootballFixtures>>;
 
     if (forceFullSync) {
-      apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season);
+      apiFixtures = await fetchApiFootballFixtures(leagueId, season);
     } else {
       // Always fetch today's fixtures (live + finished) AND any currently-live
       // matches — fetched together, not gated on one another. Previously today's
@@ -90,8 +92,8 @@ export async function POST(req: NextRequest) {
       // matches stuck on "LIVE" for hours during back-to-back games.
       const today = new Date().toISOString().split('T')[0];
       const [todayRaw, liveRaw] = await Promise.all([
-        fetchApiFootballFixtures(WC_LEAGUE_ID, season, { date: today }),
-        fetchApiFootballFixtures(WC_LEAGUE_ID, season, { liveOnly: true }),
+        fetchApiFootballFixtures(leagueId, season, { date: today }),
+        fetchApiFootballFixtures(leagueId, season, { liveOnly: true }),
       ]);
       apiFixtures = mergeById(todayRaw, liveRaw);
 
@@ -112,13 +114,13 @@ export async function POST(req: NextRequest) {
         .map((r) => r.external_provider_id)
         .filter((id): id is string => Boolean(id) && !covered.has(id as string));
       for (let i = 0; i < stuckIds.length; i += 20) {
-        const batch = await fetchApiFootballFixtures(WC_LEAGUE_ID, season, { ids: stuckIds.slice(i, i + 20).join('-') });
+        const batch = await fetchApiFootballFixtures(leagueId, season, { ids: stuckIds.slice(i, i + 20).join('-') });
         apiFixtures = mergeById(apiFixtures, batch);
       }
 
       // Off-season / nothing today and nothing live → fall back to a full sync.
       if (!apiFixtures.length) {
-        apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, season);
+        apiFixtures = await fetchApiFootballFixtures(leagueId, season);
       }
     }
 

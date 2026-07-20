@@ -16,9 +16,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const seed = await ensureBracketSeeded();
-    const resolved = await runBracketResolution();
-    const reconciled = await reconcileBracketFromApi();
+    // Optional ?tournamentId= targets a specific (e.g. not-yet-active) tournament,
+    // so a newly-provisioned bracket can be seeded before it goes live.
+    const tid = new URL(req.url).searchParams.get('tournamentId') ?? undefined;
+    const input = tid ? { tournamentId: tid } : undefined;
+    const seed = await ensureBracketSeeded(input);
+    const resolved = await runBracketResolution(input);
+    const reconciled = await reconcileBracketFromApi(input);
     return NextResponse.json({ ok: true, ...seed, ...resolved, ...reconciled });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

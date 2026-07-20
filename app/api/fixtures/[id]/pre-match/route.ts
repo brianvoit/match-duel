@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
+import { resolveTournamentApiTarget } from '@/lib/jobs/apiFootballClient';
 import { teamCode } from '@/lib/data/teamInfo';
 import { sideForApiTeam } from '@/lib/domain/teamSides';
 import type {
@@ -124,7 +125,6 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 
   const key = serverEnv.API_FOOTBALL_KEY;
   const extId = fixture.external_provider_id;
-  const season = serverEnv.API_FOOTBALL_SEASON;
 
   if (!key || !extId) return NextResponse.json({ ok: true, ...base });
 
@@ -145,12 +145,17 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   const cachedPre = await getCached(id, 'pre_match', fixtureStatus as never, preMatchTtl);
   if (cachedPre) return NextResponse.json({ ok: true, ...base, ...cachedPre, standings });
 
+  // Top-scorers are league-wide, so key them to the active tournament's league +
+  // season (men's WC = league 1 / 2026, women's = league 8 / 2027, …) rather than
+  // a hard-coded league id.
+  const { leagueId, season } = await resolveTournamentApiTarget();
+
   // Fire all API calls in parallel
   const [predRaw, injRaw, oddsRaw, scorersRaw, fixByIdRaw] = await Promise.all([
     apiFetch(key, `/predictions?fixture=${extId}`),
     apiFetch(key, `/injuries?fixture=${extId}`),
     apiFetch(key, `/odds?fixture=${extId}&bookmaker=6`), // Bet365
-    apiFetch(key, `/players/topscorers?league=1&season=${season}`),
+    apiFetch(key, `/players/topscorers?league=${leagueId}&season=${season}`),
     apiFetch(key, `/fixtures?id=${extId}`), // reliable team-id source when predictions is empty
   ]);
 

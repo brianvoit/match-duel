@@ -1,10 +1,10 @@
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
-import { BRACKET, slotLabel, isPlaceholderTeam } from '@/lib/domain/bracket';
+import { bracketForFormat, slotLabel, isPlaceholderTeam } from '@/lib/domain/bracket';
 import { teamCode } from '@/lib/data/teamInfo';
 import { buildGroupTables, computeThirdsByMatch, resolveSlot, decideMatch, reconcileApiKnockouts } from '@/lib/domain/bracketResolve';
 import type { BracketFixture, OurKnockoutSlot, ApiKnockout } from '@/lib/domain/bracketResolve';
-import { fetchApiFootballFixtures, apiRoundToStage, WC_LEAGUE_ID } from '@/lib/jobs/apiFootballClient';
+import { fetchApiFootballFixtures, apiRoundToStage, resolveTournamentApiTarget } from '@/lib/jobs/apiFootballClient';
 
 interface KnockoutFixtureRow {
   id: string;
@@ -27,6 +27,16 @@ async function activeTournamentId(service: ReturnType<typeof createServiceRoleCl
   return data?.id ?? null;
 }
 
+/** The tournament's format id ('MENS_48' | 'WOMENS_32'), used to pick its bracket. */
+async function tournamentFormat(
+  service: ReturnType<typeof createServiceRoleClient>,
+  tournamentId: string,
+): Promise<string | null> {
+  const { data } = await service
+    .from('tournament').select('format').eq('id', tournamentId).maybeSingle<{ format: string | null }>();
+  return data?.format ?? null;
+}
+
 /**
  * Idempotently create the knockout-bracket skeleton (placeholder fixtures keyed
  * by bracket_code, external_provider_id null). Safe to run every cron tick — only
@@ -37,20 +47,22 @@ export async function ensureBracketSeeded(input?: { tournamentId?: string }): Pr
   const tournamentId = input?.tournamentId ?? (await activeTournamentId(service));
   if (!tournamentId) return { seeded: 0 };
 
+  const bracket = bracketForFormat(await tournamentFormat(service, tournamentId));
+
   const { data: rounds } = await service
     .from('round').select('id, stage').eq('tournament_id', tournamentId) as {
       data: Array<{ id: string; stage: string }> | null;
     };
   const roundIdByStage = new Map((rounds ?? []).map((r) => [r.stage, r.id]));
-  if ([...new Set(BRACKET.map((m) => m.stage))].some((s) => !roundIdByStage.has(s))) return { seeded: 0 };
+  if ([...new Set(bracket.map((m) => m.stage))].some((s) => !roundIdByStage.has(s))) return { seeded: 0 };
 
   const { data: existing } = await service
-    .from('fixture').select('bracket_code').in('bracket_code', BRACKET.map((m) => m.code)) as {
+    .from('fixture').select('bracket_code').in('bracket_code', bracket.map((m) => m.code)) as {
       data: Array<{ bracket_code: string | null }> | null;
     };
   const have = new Set((existing ?? []).map((e) => e.bracket_code));
 
-  const rows = BRACKET.filter((m) => !have.has(m.code)).map((m) => ({
+  const rows = bracket.filter((m) => !have.has(m.code)).map((m) => ({
     round_id: roundIdByStage.get(m.stage)!,
     bracket_code: m.code,
     external_provider_id: null,
@@ -89,6 +101,8 @@ export async function runBracketResolution(input?: { tournamentId?: string }): P
     tournamentId = t.id;
   }
 
+  const bracket = bracketForFormat(await tournamentFormat(service, tournamentId));
+
   // Group-stage standings
   const { data: rounds } = await service
     .from('round').select('id, stage').eq('tournament_id', tournamentId) as {
@@ -117,7 +131,7 @@ export async function runBracketResolution(input?: { tournamentId?: string }): P
   // Knockout fixtures (keyed by stable bracket_code). A fixture with a real
   // external_provider_id has been linked to the published API draw — its results
   // still feed progression, but the resolver never overwrites its teams.
-  const codes = BRACKET.map((m) => m.code);
+  const codes = bracket.map((m) => m.code);
   const { data: koFx } = await service
     .from('fixture')
     .select('id, bracket_code, external_provider_id, home_team, away_team, home_score, away_score, home_pen_score, away_pen_score, status, bracket_locked')
@@ -130,7 +144,7 @@ export async function runBracketResolution(input?: { tournamentId?: string }): P
 
   // Winners/losers of decided knockout matches, for progression.
   const matchResults: Record<string, { winner: string; loser: string }> = {};
-  for (const m of BRACKET) {
+  for (const m of bracket) {
     const f = byCode.get(m.code);
     if (!f) continue;
     const decided = decideMatch({
@@ -143,14 +157,18 @@ export async function runBracketResolution(input?: { tournamentId?: string }): P
   }
 
   // Third-place R32 opponents (filled once every group is complete, via Annex C).
+  // Only the 48-team men's bracket has best-third qualification ('third' slots);
+  // the women's 32-team bracket has none, so skip the (12-group-specific) Annex C
+  // computation entirely for it.
   // TODO(api-first): when API-Football publishes the real knockout draw, prefer
   // its assignments over this computed fallback.
-  const thirdsByMatch = computeThirdsByMatch(tables);
+  const needsThirds = bracket.some((m) => m.home.kind === 'third' || m.away.kind === 'third');
+  const thirdsByMatch: ReturnType<typeof computeThirdsByMatch> = needsThirds ? computeThirdsByMatch(tables) : {};
 
   const ctx = { tables, matchResults, thirdsByMatch };
 
   let updated = 0;
-  for (const m of BRACKET) {
+  for (const m of bracket) {
     const f = byCode.get(m.code);
     if (!f) continue;
     // API-first: once a fixture is linked to the real draw (or pinned by an
@@ -185,15 +203,17 @@ export async function reconcileBracketFromApi(input?: { tournamentId?: string })
   const tournamentId = input?.tournamentId ?? (await activeTournamentId(service));
   if (!tournamentId) return { linked: 0, skipped: 'no_tournament' };
 
+  const bracket = bracketForFormat(await tournamentFormat(service, tournamentId));
+
   const { data: koFx } = await service
     .from('fixture')
     .select('id, bracket_code, external_provider_id, home_team, away_team, bracket_locked')
-    .in('bracket_code', BRACKET.map((m) => m.code)) as {
+    .in('bracket_code', bracket.map((m) => m.code)) as {
       data: Array<{ id: string; bracket_code: string; external_provider_id: string | null; home_team: string; away_team: string; bracket_locked: boolean }> | null;
     };
   if (!koFx || koFx.length === 0) return { linked: 0, skipped: 'not_seeded' };
 
-  const stageByCode = new Map(BRACKET.map((m) => [m.code, m.stage as string]));
+  const stageByCode = new Map(bracket.map((m) => [m.code, m.stage as string]));
   const ours: OurKnockoutSlot[] = koFx.map((f) => ({
     fixtureId: f.id,
     bracketCode: f.bracket_code,
@@ -209,7 +229,8 @@ export async function reconcileBracketFromApi(input?: { tournamentId?: string })
 
   let apiFixtures;
   try {
-    apiFixtures = await fetchApiFootballFixtures(WC_LEAGUE_ID, serverEnv.API_FOOTBALL_SEASON);
+    const { leagueId, season } = await resolveTournamentApiTarget(tournamentId);
+    apiFixtures = await fetchApiFootballFixtures(leagueId, season);
   } catch {
     return { linked: 0, skipped: 'api_error' };
   }

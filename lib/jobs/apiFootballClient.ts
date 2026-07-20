@@ -13,7 +13,31 @@ import { createServiceRoleClient } from '@/lib/supabase/service';
 import type { ProviderFixture } from '@/lib/jobs/fixtureProvider';
 
 const BASE_URL = 'https://v3.football.api-sports.io';
-export const WC_LEAGUE_ID = 1; // FIFA World Cup is always league 1
+export const WC_LEAGUE_ID = 1; // FIFA (men's) World Cup — the default/fallback league
+
+/**
+ * The API-Football league id + season to query for a given tournament, read from
+ * the tournament row so the pipeline can target any competition (e.g. the Women's
+ * World Cup, league 8) from data alone. Falls back to the men's WC league and the
+ * global season env when a column is unset, so nothing breaks pre-migration.
+ * Pass no tournamentId to resolve the currently-active tournament.
+ */
+export async function resolveTournamentApiTarget(
+  tournamentId?: string
+): Promise<{ tournamentId: string | null; leagueId: number; season: number }> {
+  const service = createServiceRoleClient();
+  const query = service.from('tournament').select('id, league_id, season');
+  const { data } = await (tournamentId
+    ? query.eq('id', tournamentId).maybeSingle()
+    : query.eq('is_active', true).order('year', { ascending: false }).limit(1).maybeSingle()
+  ) as { data: { id: string; league_id: number | null; season: number | null } | null };
+
+  return {
+    tournamentId: data?.id ?? tournamentId ?? null,
+    leagueId: data?.league_id ?? WC_LEAGUE_ID,
+    season: data?.season ?? serverEnv.API_FOOTBALL_SEASON,
+  };
+}
 
 /** Thrown when API-Football's per-minute rate limit is hit; callers skip the run. */
 export class ApiFootballRateLimitError extends Error {
