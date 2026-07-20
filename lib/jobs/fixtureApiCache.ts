@@ -35,6 +35,11 @@ function maxAgeMs(type: CacheType, status: FixtureStatus): number {
   }
 }
 
+// A payload flagged incomplete (see setCached `complete:false`) is never frozen
+// by the FINAL Infinity TTL — cap it so it's periodically re-fetched until the
+// provider fills the gap (e.g. an events feed still missing shootout kicks).
+const PARTIAL_MAX_AGE_MS = 15 * 60 * 1000; // 15 minutes
+
 /** Return cached data if fresh, otherwise null. Pass maxAgeOverrideMs to tighten the TTL. */
 export async function getCached(
   fixtureId: string,
@@ -42,7 +47,7 @@ export async function getCached(
   status: FixtureStatus,
   maxAgeOverrideMs?: number
 ): Promise<Record<string, unknown> | null> {
-  const ttl = maxAgeOverrideMs ?? maxAgeMs(type, status);
+  let ttl = maxAgeOverrideMs ?? maxAgeMs(type, status);
   if (ttl === 0) return null; // never serve stale (e.g. pre_match after FINAL)
 
   const service = createServiceRoleClient();
@@ -55,23 +60,41 @@ export async function getCached(
 
   if (!data) return null;
 
+  const stored = data.data ?? {};
+  // Known-incomplete payloads get a short TTL instead of forever, so a later read
+  // re-fetches and can pick up corrected/completed provider data.
+  if (stored._partial === true) ttl = Math.min(ttl, PARTIAL_MAX_AGE_MS);
+
   const ageMs = Date.now() - new Date(data.fetched_at).getTime();
   if (ageMs > ttl) return null; // stale
 
-  return data.data;
+  // Strip the internal marker so callers never see it.
+  if (stored._partial === true) {
+    const rest = { ...stored };
+    delete rest._partial;
+    return rest;
+  }
+  return stored;
 }
 
-/** Upsert data into the cache. */
+/**
+ * Upsert data into the cache. Pass `complete: false` for a non-empty but partial
+ * payload (e.g. a FINAL fixture's events feed still missing shootout kicks) so it
+ * isn't frozen forever by the FINAL Infinity TTL — it gets a short TTL and is
+ * re-fetched until complete. Default is complete (cache per the normal rules).
+ */
 export async function setCached(
   fixtureId: string,
   type: CacheType,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  opts?: { complete?: boolean }
 ): Promise<void> {
+  const data = opts?.complete === false ? { ...payload, _partial: true } : payload;
   const service = createServiceRoleClient();
   await service
     .from('fixture_api_cache')
     .upsert(
-      { fixture_id: fixtureId, cache_type: type, data: payload, fetched_at: new Date().toISOString() },
+      { fixture_id: fixtureId, cache_type: type, data, fetched_at: new Date().toISOString() },
       { onConflict: 'fixture_id,cache_type' }
     );
 }

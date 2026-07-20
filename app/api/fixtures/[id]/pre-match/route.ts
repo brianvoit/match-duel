@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
 import { teamCode } from '@/lib/data/teamInfo';
+import { sideForApiTeam } from '@/lib/domain/teamSides';
 import type {
   PreMatchData, PreMatchPredictions, GroupStandingRow,
   TeamGoals, InjuryEntry, MatchOdds, TopScorer, StyleComparison,
@@ -259,7 +260,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     // home team to our home team by code (otherwise the favorite shows up on the
     // wrong side — e.g. France's win % appearing under England).
     const predHomeName = (pred as { teams?: { home?: ApiTeam } }).teams?.home?.name;
-    const predReversed = predHomeName ? teamCode(predHomeName) !== teamCode(fixture.home_team) : false;
+    const predReversed = sideForApiTeam(predHomeName ?? '', fixture.home_team, fixture.away_team) === 'AWAY';
     predictions = {
       homePercent: pct(predReversed ? p.percent?.away : p.percent?.home),
       drawPercent: pct(p.percent?.draw),
@@ -276,18 +277,24 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   // ── Injuries ───────────────────────────────────────────────────────────────
   let injuries: PreMatchData['injuries'] = null;
   if (Array.isArray(injRaw) && injRaw.length) {
-    const mapInj = (teamName: string): InjuryEntry[] =>
-      injRaw
-        .filter((i: { team?: { name?: string } }) => i?.team?.name === teamName)
-        .map((i: { player?: { name?: string; type?: string; reason?: string }; type?: string; reason?: string }) => ({
-          // API-Football nests type/reason under `player` in some payloads; fall
-          // back to top-level fields and a sensible default so the client never
-          // receives an undefined type (which crashed PreMatchPanel.toLowerCase).
-          playerName: i?.player?.name ?? 'Unknown',
-          type: i?.player?.type ?? i?.type ?? 'Injured',
-          reason: i?.player?.reason ?? i?.reason ?? '',
-        }));
-    injuries = { home: mapInj(fixture.home_team), away: mapInj(fixture.away_team) };
+    // Bucket by team IDENTITY (shared helper), not exact name match — an API name
+    // variant ("Czechia"/"Czech Republic") would otherwise drop that team's
+    // injuries entirely. Reversed knockout orientation is handled for free.
+    const injBySide: NonNullable<PreMatchData['injuries']> = { home: [], away: [] };
+    for (const i of injRaw as Array<{ team?: { name?: string }; player?: { name?: string; type?: string; reason?: string }; type?: string; reason?: string }>) {
+      const side = sideForApiTeam(i?.team?.name ?? '', fixture.home_team, fixture.away_team);
+      if (!side) continue;
+      const entry: InjuryEntry = {
+        // API-Football nests type/reason under `player` in some payloads; fall
+        // back to top-level fields and a sensible default so the client never
+        // receives an undefined type (which crashed PreMatchPanel.toLowerCase).
+        playerName: i?.player?.name ?? 'Unknown',
+        type: i?.player?.type ?? i?.type ?? 'Injured',
+        reason: i?.player?.reason ?? i?.reason ?? '',
+      };
+      (side === 'HOME' ? injBySide.home : injBySide.away).push(entry);
+    }
+    injuries = injBySide;
   }
 
   // ── Odds ───────────────────────────────────────────────────────────────────

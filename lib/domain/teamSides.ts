@@ -24,3 +24,25 @@ export function orderByFixtureSides<T>(
   const away = byAway ?? items.find((i) => i !== home) ?? null;
   return [home, away];
 }
+
+/**
+ * Which of our fixture's sides an API-provided team belongs to, matched by
+ * identity (code, so name variants like "Czechia"/"Czech Republic" collapse) —
+ * NOT by the API's position order, which can be reversed vs our bracket-seeded
+ * orientation for a knockout fixture. Returns null when it matches neither side
+ * (a stand-in id whose real teams aren't ours); callers pick their own fallback.
+ *
+ * This is the single-item companion to orderByFixtureSides — use it wherever a
+ * route needs to bucket API data (events, injuries, unavailable players,
+ * historical meetings, win-probability) onto our home/away.
+ */
+export function sideForApiTeam(
+  apiTeamName: string,
+  homeTeam: string,
+  awayTeam: string,
+): 'HOME' | 'AWAY' | null {
+  const code = teamCode(apiTeamName);
+  if (code === teamCode(homeTeam)) return 'HOME';
+  if (code === teamCode(awayTeam)) return 'AWAY';
+  return null;
+}

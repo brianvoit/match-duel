@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
-import { teamCode } from '@/lib/data/teamInfo';
+import { sideForApiTeam } from '@/lib/domain/teamSides';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -33,10 +33,10 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 
   const { data: fixture } = await service
     .from('fixture')
-    .select('external_provider_id, home_team, away_team, status')
+    .select('external_provider_id, home_team, away_team, status, home_pen_score, away_pen_score')
     .eq('id', id)
     .maybeSingle() as {
-      data: { external_provider_id: string | null; home_team: string; away_team: string; status: string } | null;
+      data: { external_provider_id: string | null; home_team: string; away_team: string; status: string; home_pen_score: number | null; away_pen_score: number | null } | null;
     };
 
   if (!fixture) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
@@ -98,12 +98,12 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     } catch { /* fall back to name match */ }
 
     const relabelTeam = (apiName: string): string => {
-      // Identity first. A knockout fixture's home/away can be reversed relative
-      // to the API (we seed orientation from the bracket), so mapping the API's
-      // home to ours *positionally* would flip every event onto the wrong team.
-      // Comparing codes also absorbs the API's name variants.
-      if (teamCode(apiName) === teamCode(fixture.home_team)) return fixture.home_team;
-      if (teamCode(apiName) === teamCode(fixture.away_team)) return fixture.away_team;
+      // Identity first (shared helper). A knockout fixture's home/away can be
+      // reversed relative to the API (we seed orientation from the bracket), so
+      // mapping the API's home to ours *positionally* would flip every event
+      // onto the wrong team; matching by code also absorbs API name variants.
+      const side = sideForApiTeam(apiName, fixture.home_team, fixture.away_team);
+      if (side) return side === 'HOME' ? fixture.home_team : fixture.away_team;
       // Only fall back to position for a stand-in id whose real teams aren't ours.
       if (apiHome && apiName === apiHome) return fixture.home_team;
       if (apiAway && apiName === apiAway) return fixture.away_team;
@@ -121,7 +121,13 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       comments:    e.comments ?? null,
     }));
 
-    await setCached(id, 'events', { events } as unknown as Record<string, unknown>);
+    // A fixture decided on penalties whose events feed carries no shootout kicks
+    // is incomplete — don't let the FINAL Infinity TTL freeze it forever; a later
+    // read re-fetches until the provider fills the shootout in.
+    const wentToPens = fixture.home_pen_score != null && fixture.away_pen_score != null;
+    const hasShootoutKicks = events.some((e) => (e.comments ?? '').toLowerCase().includes('shootout'));
+    const complete = !(wentToPens && !hasShootoutKicks);
+    await setCached(id, 'events', { events } as unknown as Record<string, unknown>, { complete });
     return NextResponse.json({ ok: true, available: true, ...base, events } satisfies EventsData & { ok: boolean });
   } catch {
     return NextResponse.json({ ok: true, available: false, reason: 'api_error', ...base });

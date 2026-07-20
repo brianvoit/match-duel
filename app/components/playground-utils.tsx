@@ -22,8 +22,14 @@ export function liveMatchClock(f: Pick<Fixture, 'status' | 'period' | 'elapsedMi
   return `${f.elapsedMinute + driftMin}'`;
 }
 
-// Derived from the single source of truth in lib/domain/scoring.ts — this used to
-// be a hand-maintained copy, which silently drifted out of sync with the server.
+// Client-side per-stage points for display + provisional tallies. Derived from the
+// single source of truth in lib/domain/scoring.ts (was once a hand-maintained copy
+// that drifted from the server). NOTE: this is the DEFAULT config — the server is
+// authoritative for settlement and the live tally (both go through the
+// per-tournament `scoring_config` via getScoringConfigForTournament). A tournament
+// that overrides point values would need that config threaded to the client; every
+// World Cup so far uses these defaults (the women's 32-team format simply never
+// produces ROUND_OF_32 fixtures, so its unused entry here is harmless).
 export const STAGE_POINTS: Record<string, number> = WORLD_CUP_2026_SCORING.stagePoints;
 
 export const STAGE_LABELS: Record<string, string> = {

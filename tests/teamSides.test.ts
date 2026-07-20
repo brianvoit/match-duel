@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { orderByFixtureSides } from '@/lib/domain/teamSides';
+import { orderByFixtureSides, sideForApiTeam } from '@/lib/domain/teamSides';
 
 type Lineup = { team: string; xi: string };
 const nameOf = (l: Lineup) => l.team;
@@ -55,5 +55,24 @@ describe('orderByFixtureSides', () => {
     const [home, away] = orderByFixtureSides(api, nameOf, 'Argentina', 'England');
     expect(home?.xi).toBe('Messi');
     expect(away?.xi).toBe('x');
+  });
+});
+
+describe('sideForApiTeam', () => {
+  it('maps each side by identity regardless of orientation', () => {
+    expect(sideForApiTeam('Argentina', 'Argentina', 'England')).toBe('HOME');
+    expect(sideForApiTeam('England', 'Argentina', 'England')).toBe('AWAY');
+    // Reversed fixture (our home = England): the API's "Argentina" is our away.
+    expect(sideForApiTeam('Argentina', 'England', 'Argentina')).toBe('AWAY');
+  });
+
+  it('collapses API name variants via code', () => {
+    expect(sideForApiTeam('Czech Republic', 'Czechia', 'South Korea')).toBe('HOME');
+    expect(sideForApiTeam('Korea Republic', 'Czechia', 'South Korea')).toBe('AWAY');
+  });
+
+  it('returns null when neither side matches (stand-in id)', () => {
+    expect(sideForApiTeam('Brazil', 'Argentina', 'England')).toBeNull();
+    expect(sideForApiTeam('', 'Argentina', 'England')).toBeNull();
   });
 });

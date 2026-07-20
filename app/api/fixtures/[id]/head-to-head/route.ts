@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 import { HISTORICAL_WC_MATCHES } from '@/lib/data/historicalWcMatches';
+import { sideForApiTeam } from '@/lib/domain/teamSides';
 
 const BASE = 'https://v3.football.api-sports.io';
 
@@ -98,6 +99,14 @@ export async function GET(
     const homeTeamId: number | null = pred?.teams?.home?.id ?? null;
     const awayTeamId: number | null = pred?.teams?.away?.id ?? null;
 
+    // The predictions payload's "home" is in the API's orientation, which can be
+    // the reverse of ours for a bracket-seeded knockout. Resolve which API team
+    // id is actually OUR home side by matching the name by code — otherwise every
+    // historical meeting gets labelled with home/away swapped. Default (stand-in
+    // id whose real teams aren't ours) to the API's order.
+    const predHomeSide = sideForApiTeam(pred?.teams?.home?.name ?? '', home, away);
+    const ourHomeApiId = predHomeSide === 'AWAY' ? awayTeamId : homeTeamId;
+
     if (homeTeamId && awayTeamId) {
       const h2hRaw = await apiFetch(apiKey, `/fixtures/headtohead?h2h=${homeTeamId}-${awayTeamId}`);
 
@@ -127,7 +136,7 @@ export async function GET(
             )
             .slice(0, 5)
             .map((m) => {
-              const apiHomeIsFixtureHome = m.teams.home.id === homeTeamId;
+              const apiHomeIsFixtureHome = m.teams.home.id === ourHomeApiId;
               const leagueName: string = m.league?.name ?? '';
               const round: string = m.league?.round ?? '';
               const stage =

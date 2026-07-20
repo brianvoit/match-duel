@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
-import { orderByFixtureSides } from '@/lib/domain/teamSides';
+import { orderByFixtureSides, sideForApiTeam } from '@/lib/domain/teamSides';
 import type { TeamLineup, SquadData } from '@/app/components/playground-types';
 
 interface RouteContext {
@@ -52,9 +52,12 @@ interface ApiInjury {
   reason?: string | null;
 }
 
-/** Fetch players unavailable for this fixture and split them by team name.
- *  Best-effort: any failure just yields empty lists (the section hides). */
-async function fetchUnavailable(externalId: string, key: string, homeName: string, awayName: string) {
+/** Fetch players unavailable for this fixture and split them onto OUR home/away
+ *  by team identity (shared helper) — exact name equality would mis-bucket an API
+ *  name variant, and defaulting the non-away team to home would then dump the
+ *  unmatched team onto the wrong side. Best-effort: any failure yields empty
+ *  lists (the section hides). */
+async function fetchUnavailable(externalId: string, key: string, homeTeam: string, awayTeam: string) {
   const empty = { home: [] as { name: string; reason: string | null }[], away: [] as { name: string; reason: string | null }[] };
   try {
     const res = await fetch(
@@ -66,9 +69,10 @@ async function fetchUnavailable(externalId: string, key: string, homeName: strin
     const home: { name: string; reason: string | null }[] = [];
     const away: { name: string; reason: string | null }[] = [];
     for (const item of data.response ?? []) {
+      const side = sideForApiTeam(item.team?.name ?? '', homeTeam, awayTeam);
+      if (!side) continue;
       const entry = { name: item.player.name, reason: item.reason ?? item.player_reason ?? null };
-      if (item.team.name === awayName) away.push(entry);
-      else home.push(entry);
+      (side === 'HOME' ? home : away).push(entry);
     }
     return { home, away };
   } catch {
@@ -127,12 +131,12 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const home = homeRaw ? mapLineup(homeRaw, fixture.home_team) : null;
     const away = awayRaw ? mapLineup(awayRaw, fixture.away_team) : null;
 
-    // Players unavailable for this fixture (injured / suspended). Split by the
-    // API's real team names, then assign to our home/away by position.
+    // Players unavailable for this fixture (injured / suspended), split onto our
+    // home/away by team identity (handles reversed orientation + name variants).
     const unavailable = await fetchUnavailable(
       fixture.external_provider_id, key,
-      homeRaw?.team.name ?? '',
-      awayRaw?.team.name ?? '',
+      fixture.home_team,
+      fixture.away_team,
     );
     if (home) home.unavailable = unavailable.home;
     if (away) away.unavailable = unavailable.away;

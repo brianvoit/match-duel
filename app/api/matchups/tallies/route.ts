@@ -2,6 +2,7 @@ import { getAuthenticatedUser } from '@/lib/supabase/get-user';
 import { NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { evaluatePick, WORLD_CUP_2026_SCORING } from '@/lib/domain/scoring';
+import { getScoringConfigForTournament } from '@/lib/supabase/scoring';
 import type { StageName } from '@/lib/domain/types';
 
 /**
@@ -74,6 +75,22 @@ export async function GET() {
   const stageByRound = new Map((rounds ?? []).map(r => [r.id, r.stage]));
   const fixtureById = new Map((fixtures ?? []).map(f => [f.id, f]));
 
+  // Scoring can differ per tournament — resolve each matchup's tournament and its
+  // scoring config so provisional tallies match how that round actually settles
+  // (both go through getScoringConfigForTournament; men's default is the fallback).
+  const { data: matchupRows } = await service
+    .from('matchup').select('id, tournament_id').in('id', matchupIds) as {
+      data: { id: string; tournament_id: string }[] | null;
+    };
+  const tournamentByMatchup = new Map((matchupRows ?? []).map(m => [m.id, m.tournament_id]));
+  const matchupByParticipant = new Map((parts ?? []).map(p => [p.id, p.matchup_id]));
+  const uniqueTournamentIds = [...new Set((matchupRows ?? []).map(m => m.tournament_id))];
+  const configByTournament = new Map(
+    await Promise.all(
+      uniqueTournamentIds.map(async (tid) => [tid, await getScoringConfigForTournament(tid)] as const)
+    )
+  );
+
   // Points per participant across all their finished picks
   const pointsByParticipant = new Map<string, number>();
   for (const pk of picks ?? []) {
@@ -81,6 +98,8 @@ export async function GET() {
     if (!f) continue;
     const stage = stageByRound.get(f.round_id) as StageName | undefined;
     if (!stage) continue;
+    const mid = matchupByParticipant.get(pk.participant_id);
+    const config = (mid ? configByTournament.get(tournamentByMatchup.get(mid) ?? '') : undefined) ?? WORLD_CUP_2026_SCORING;
     const pts = evaluatePick({
       fixture: {
         homeGoals: f.home_score ?? 0,
@@ -91,7 +110,7 @@ export async function GET() {
       },
       pickedTeamSide: pk.side,
       stage,
-      scoringConfig: WORLD_CUP_2026_SCORING,
+      scoringConfig: config,
     });
     pointsByParticipant.set(pk.participant_id, (pointsByParticipant.get(pk.participant_id) ?? 0) + pts);
   }
