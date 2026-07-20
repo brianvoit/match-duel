@@ -51,6 +51,28 @@ export async function POST(req: NextRequest) {
     const searchParams = new URL(req.url).searchParams;
     const forceFullSync = searchParams.get('full') === '1';
 
+    // Once every round has settled, there is nothing left for API-Football to
+    // tell us — but the "nothing today, nothing live" branch below would
+    // otherwise fall back to a full-season sync on every single cron tick
+    // (every 2 minutes), burning API quota indefinitely for zero benefit. Skip
+    // the sync entirely in that case; ?full=1 still forces a real run (e.g. to
+    // pull in a late correction from the provider).
+    if (!forceFullSync) {
+      const { data: openRounds } = await service
+        .from('round')
+        .select('id')
+        .eq('tournament_id', tournament.id)
+        .eq('is_complete', false)
+        .limit(1);
+      if (!openRounds || openRounds.length === 0) {
+        return NextResponse.json({
+          ok: true,
+          message: 'Tournament fully complete — nothing to sync.',
+          season,
+        });
+      }
+    }
+
     const mergeById = (...lists: Awaited<ReturnType<typeof fetchApiFootballFixtures>>[]) => {
       const byId = new Map<number, (typeof lists)[number][number]>();
       for (const list of lists) for (const f of list) byId.set(f.fixture.id, f);
