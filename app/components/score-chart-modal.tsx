@@ -20,7 +20,6 @@ interface ScoreChartModalProps {
   completedRoundFixtures: Record<string, Fixture[]>;
   pickMap: Record<string, 'HOME' | 'AWAY'>;
   provisionalPoints: { mine: number; opp: number };
-  myParticipantId: string | null;
   currentRound: Round | null;
   selectedMatchup: Matchup;
   userAvatarUrl?: string | null;
@@ -73,12 +72,16 @@ function buildChart(
 
 export function ScoreChartModal({
   standing, roundResults, allRounds, fixtures, completedRoundFixtures, pickMap,
-  provisionalPoints, myParticipantId, currentRound, selectedMatchup,
+  provisionalPoints, currentRound, selectedMatchup,
   userAvatarUrl, oppAvatarUrl, userEmail, displayName,
   onClose,
 }: ScoreChartModalProps) {
-  const me  = standing.find(s => s.participantId === myParticipantId);
-  const opp = standing.find(s => s.participantId !== myParticipantId);
+  // Resolve by email, not myParticipantId: that id only gets populated from the
+  // CURRENT round's pick-order fetch, which is skipped once a matchup's
+  // tournament is fully complete (no current round left) — leaving it null and
+  // silently zeroing this player's total.
+  const me  = standing.find(s => s.email === userEmail);
+  const opp = standing.find(s => s.email !== userEmail);
   // Settled tournament points + live provisional from the current round's finals,
   // matching the header H2H scorebug.
   const myPts  = (me?.tournamentPoints  ?? 0) + provisionalPoints.mine;
@@ -209,8 +212,8 @@ export function ScoreChartModal({
         : round.stage === currentStage ? currentRemaining
         : total;
       const result = resultByStage.get(round.stage);
-      const myE  = result?.participants.find(p => p.participantId === myParticipantId);
-      const oppE = result?.participants.find(p => p.participantId !== myParticipantId);
+      const myE  = result?.participants.find(p => p.email === userEmail);
+      const oppE = result?.participants.find(p => p.email !== userEmail);
       const isCurrent = round.stage === currentStage;
       // Settled rounds use the official result; the in-progress round uses the live
       // provisional points (it won't settle until every fixture in it is final).

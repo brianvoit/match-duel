@@ -1101,10 +1101,11 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
 
       // Live standing totals — same numbers as the header H2H scorebug
       // (settled tournament points + this round's provisional points). Resolve
-      // "me" by participantId like the scorebug does: the email match is
-      // unreliable here and silently zeroed my own total.
-      const myEntry = standing.find((s) => s.participantId === myParticipantId);
-      const oppEntry = standing.find((s) => s.participantId !== myParticipantId);
+      // by email: myParticipantId only gets populated from the current round's
+      // pick-order fetch, which is skipped once the tournament is fully
+      // complete for this matchup, silently zeroing my own total.
+      const myEntry = standing.find((s) => s.email === userEmail);
+      const oppEntry = standing.find((s) => s.email !== userEmail);
       const myTotal = (myEntry?.tournamentPoints ?? 0) + provisionalPoints.mine;
       const oppTotal = (oppEntry?.tournamentPoints ?? 0) + provisionalPoints.opp;
 
@@ -2422,8 +2423,12 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
         {/* ── Centre: H2H scorebug ────────────────────────────────────────── */}
         <div className="wc-topbar-center">
           {selectedMatchup && (() => {
-            const me = standing.find((s) => s.participantId === myParticipantId);
-            const opp = standing.find((s) => s.participantId !== myParticipantId);
+            // Resolve by email, not myParticipantId: that id only gets populated
+            // from the CURRENT round's pick-order fetch, which is skipped once a
+            // matchup's tournament is fully complete (no current round left) —
+            // leaving it null and silently zeroing this player's total.
+            const me = standing.find((s) => s.email === userEmail);
+            const opp = standing.find((s) => s.email !== userEmail);
             const myPts = (me?.tournamentPoints ?? 0) + provisionalPoints.mine;
             const oppPts = (opp?.tournamentPoints ?? 0) + provisionalPoints.opp;
             const leading = myPts > oppPts;
@@ -3642,7 +3647,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           completedRoundFixtures={completedRoundFixtures}
           pickMap={pickMap}
           provisionalPoints={provisionalPoints}
-          myParticipantId={myParticipantId}
           currentRound={currentRound}
           selectedMatchup={selectedMatchup}
           userAvatarUrl={userAvatarUrl}
