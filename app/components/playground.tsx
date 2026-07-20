@@ -1857,7 +1857,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
           <div key={i} className="wc-squad-line">
             {line.map(p => (
               <div key={p.number} className="wc-squad-player">
-                <div className={`wc-squad-player-num wc-squad-player-num--${p.pos.toLowerCase()}`}>{p.number}</div>
+                <div className={`wc-squad-player-num wc-squad-player-num--${(p.pos ?? '').toLowerCase()}`}>{p.number}</div>
                 <div className="wc-squad-player-name">{p.name.split(' ').pop()}</div>
               </div>
             ))}
@@ -1885,8 +1885,8 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       </div>
     );
 
-    const posLabel = (pos: string) => (
-      { g: 'Goalkeeper', d: 'Defender', m: 'Midfielder', f: 'Forward' }[pos.toLowerCase()] ?? pos
+    const posLabel = (pos: string | null) => (
+      pos ? ({ g: 'Goalkeeper', d: 'Defender', m: 'Midfielder', f: 'Forward' }[pos.toLowerCase()] ?? pos) : null
     );
 
     type PairItem = { key: string; num?: number; name: string; sub?: string | null };

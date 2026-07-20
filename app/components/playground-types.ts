@@ -198,7 +198,8 @@ export type RecapData = {
 export type LineupPlayer = {
   name: string;
   number: number;
-  pos: string;    // 'G' | 'D' | 'M' | 'F'
+  // API-Football sometimes omits this (seen on substitutes) — 'G' | 'D' | 'M' | 'F' | null.
+  pos: string | null;
   grid: string | null; // "row:col" e.g. "2:3"
 };
 

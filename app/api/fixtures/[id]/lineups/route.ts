@@ -11,7 +11,8 @@ interface RouteContext {
 
 // API-Football player shape from /fixtures/lineups
 interface ApiPlayer {
-  player: { name: string; number: number; pos: string; grid: string | null };
+  // pos is sometimes omitted by the API (seen on substitutes)
+  player: { name: string; number: number; pos: string | null; grid: string | null };
 }
 
 interface ApiLineup {
