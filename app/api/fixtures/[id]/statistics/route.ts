@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service';
 import { serverEnv } from '@/lib/supabase/env';
 import { getCached, setCached } from '@/lib/jobs/fixtureApiCache';
+import { orderByFixtureSides } from '@/lib/domain/teamSides';
 import type { RecapData } from '@/app/components/playground-types';
 
 interface RouteContext {
@@ -79,12 +80,19 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       return NextResponse.json({ ok: true, available: false, reason: 'no_stats', stats: [] });
     }
 
-    // API-Football returns statistics in [home, away] order. Map by position and
-    // relabel to our fixture's teams (external ids can be stand-ins).
-    const homeTeamData = teams[0];
-    const awayTeamData = teams[1] ?? null;
+    // API-Football returns statistics in its OWN [home, away] order, which can
+    // be reversed vs ours for a knockout fixture seeded the other way round —
+    // trusting position would put the wrong team's stats on our home side.
+    // Match by team identity instead (falls back to API order for a stand-in id
+    // whose real teams don't match ours).
+    const [homeTeamData, awayTeamData] = orderByFixtureSides(
+      teams,
+      (t) => t.team.name,
+      fixture.home_team,
+      fixture.away_team,
+    );
 
-    const homeMap = new Map(homeTeamData.statistics.map(s => [s.type, s.value]));
+    const homeMap = new Map((homeTeamData?.statistics ?? []).map(s => [s.type, s.value]));
     const awayMap = new Map((awayTeamData?.statistics ?? []).map(s => [s.type, s.value]));
 
     const stats = STAT_WHITELIST
