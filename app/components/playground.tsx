@@ -2267,7 +2267,12 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
         })()}
 
         {/* ── Penalty shootout breakdown ───────────────────────────────── */}
-        {shootout.length > 0 && (
+        {/* The provider's events feed sometimes omits shootout kicks entirely even
+            for a fixture we know went to penalties (our own homePenScore/awayPenScore
+            says so) — fall back to just the final shootout score rather than hiding
+            the whole section, and only render the kick-by-kick rounds when we
+            actually have them. */}
+        {(shootout.length > 0 || (selectedFixture.homePenScore != null && selectedFixture.awayPenScore != null)) && (
           <div className="wc-pk">
             <div className="wc-pk-title">Penalty Shootout</div>
             <div className="wc-pk-score">
@@ -2279,33 +2284,37 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 {awayTeam} {teamFlag(awayTeam ?? '')}
               </span>
             </div>
-            <div className="wc-pk-rounds">
-              {Array.from({ length: shootoutRounds }).map((_, i) => {
-                const h = homeKicks[i];
-                const a = awayKicks[i];
-                return (
-                  <div key={i} className="wc-pk-round">
-                    <div className="wc-pk-kick wc-pk-kick--home">
-                      {h && (
-                        <>
-                          <KickMark scored={h.scored} />
-                          <span className="wc-pk-kick-name">{h.player.split(' ').pop()}</span>
-                        </>
-                      )}
+            {shootoutRounds > 0 ? (
+              <div className="wc-pk-rounds">
+                {Array.from({ length: shootoutRounds }).map((_, i) => {
+                  const h = homeKicks[i];
+                  const a = awayKicks[i];
+                  return (
+                    <div key={i} className="wc-pk-round">
+                      <div className="wc-pk-kick wc-pk-kick--home">
+                        {h && (
+                          <>
+                            <KickMark scored={h.scored} />
+                            <span className="wc-pk-kick-name">{h.player.split(' ').pop()}</span>
+                          </>
+                        )}
+                      </div>
+                      <span className="wc-pk-round-num">{i + 1}</span>
+                      <div className="wc-pk-kick wc-pk-kick--away">
+                        {a && (
+                          <>
+                            <span className="wc-pk-kick-name">{a.player.split(' ').pop()}</span>
+                            <KickMark scored={a.scored} />
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <span className="wc-pk-round-num">{i + 1}</span>
-                    <div className="wc-pk-kick wc-pk-kick--away">
-                      {a && (
-                        <>
-                          <span className="wc-pk-kick-name">{a.player.split(' ').pop()}</span>
-                          <KickMark scored={a.scored} />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="wc-pk-no-detail">Kick-by-kick detail unavailable for this shootout.</p>
+            )}
           </div>
         )}
 
