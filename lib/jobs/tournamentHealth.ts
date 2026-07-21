@@ -6,6 +6,12 @@ export interface Check {
   name: string;
   ok: boolean;
   detail: string;
+  /** Only critical signals drive the overall `ok` (and therefore alerting).
+   *  Informational ones are reported for visibility but are expected to be
+   *  false sometimes — e.g. recap data is cached lazily on first view, and a
+   *  provider gap can leave a cache row permanently incomplete. Alerting on
+   *  those would make the monitor permanently red and therefore ignored. */
+  critical?: boolean;
 }
 
 type TournamentRow = {
@@ -139,11 +145,13 @@ export async function getDataHealth(): Promise<{ ok: boolean; signals: Check[] }
     name: 'final_recap_cached',
     ok: missingStats === 0 && missingEvents === 0,
     detail: `${finalIds.size} FINAL · missing stats:${missingStats} events:${missingEvents} (populated lazily on view; backfill if 0 viewers expected)`,
+    critical: false,
   });
   signals.push({
     name: 'no_frozen_partial_cache',
     ok: partialCount === 0,
     detail: `${partialCount} cache row(s) flagged incomplete (will self-heal on next fetch)`,
+    critical: false,
   });
 
   // Live fixtures whose score sync has stalled (last_synced_at older than 10 min).
@@ -155,7 +163,9 @@ export async function getDataHealth(): Promise<{ ok: boolean; signals: Check[] }
     name: 'live_sync_fresh',
     ok: (staleLive?.length ?? 0) === 0,
     detail: `${staleLive?.length ?? 0} LIVE fixture(s) not synced in >10 min`,
+    critical: true,
   });
 
-  return { ok: signals.every((s) => s.ok), signals };
+  // Only critical signals gate `ok` — see Check.critical.
+  return { ok: signals.filter((s) => s.critical).every((s) => s.ok), signals };
 }

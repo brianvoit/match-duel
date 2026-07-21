@@ -4,12 +4,15 @@
  * Wraps the opennextjs-generated Next.js handler and adds a `scheduled`
  * handler for Cloudflare Cron Triggers.
  *
- * Cron jobs fired every 5 minutes:
+ * Cron jobs fired every 2 minutes:
  *   - /api/admin/fixtures/live-sync  → fetch latest scores/status from
  *     API-Football, update fixture table, settle completed rounds, send
  *     push notifications when results are in.
  *   - /api/admin/notifications/picks-due-soon  → remind first-pickers who
  *     haven't picked in the next 24 hours.
+ * And every 10 minutes:
+ *   - /api/admin/readiness  → data-health watchdog (stalled score sync, setup
+ *     regressions). Logs at error level only on *critical* signals.
  *
  * Build order:
  *   1. `opennextjs-cloudflare build` → generates .open-next/worker.js
@@ -39,9 +42,9 @@ export default {
     return nextHandler.fetch(request, env, ctx);
   },
 
-  // ── Cron trigger: every 5 minutes ───────────────────────────────────────
+  // ── Cron trigger: every 2 minutes ───────────────────────────────────────
   async scheduled(
-    _event: ScheduledEvent,
+    event: ScheduledEvent,
     env: Env,
     ctx: ExecutionContext
   ): Promise<void> {
@@ -84,5 +87,34 @@ export default {
         console.error('[cron] picks-due-soon error:', err);
       })
     );
+
+    // 3. Data-health watchdog. The cron fires every 2 min, but these are pure DB
+    //    reads whose signals move slowly, so throttle to every 10 minutes (which
+    //    matches the "LIVE fixture not synced in >10 min" threshold it checks).
+    //    Only *critical* signals log at error level — informational ones (lazily
+    //    cached recaps, self-healing partial rows) would otherwise keep the
+    //    monitor permanently red and get ignored.
+    const minute = new Date(event?.scheduledTime ?? Date.now()).getUTCMinutes();
+    if (minute % 10 === 0) {
+      ctx.waitUntil(
+        fetch(`${BASE_URL}/api/admin/readiness`, { headers }).then(async (r) => {
+          if (!r.ok) {
+            console.error(`[cron] readiness failed: HTTP ${r.status}`);
+            return;
+          }
+          const d = await r.json() as {
+            readiness?: { ok?: boolean };
+            health?: { ok?: boolean; signals?: unknown[] };
+          };
+          if (d.health?.ok === false) {
+            console.error('[cron] data-health UNHEALTHY:', JSON.stringify(d.health));
+          } else {
+            console.log(`[cron] data-health ok (readiness ok: ${d.readiness?.ok})`);
+          }
+        }).catch((err: unknown) => {
+          console.error('[cron] readiness error:', err);
+        })
+      );
+    }
   },
 };
