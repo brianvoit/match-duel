@@ -9,6 +9,7 @@ import { PreMatchPanel } from '@/app/components/pre-match-panel';
 import { RecapPanel } from '@/app/components/recap-panel';
 import { SquadPanel } from '@/app/components/squad-panel';
 import { useFixtureDetailData } from '@/app/components/use-fixture-detail-data';
+import { useProfile } from '@/app/components/use-profile';
 import { ScoreChartModal } from '@/app/components/score-chart-modal';
 import { ProfileSettings } from '@/app/components/profile-settings';
 import { renderMatchShareCard, type ShareGoal } from '@/app/components/share-card';
@@ -20,7 +21,7 @@ import {
 } from '@/app/components/playground-types';
 import {
   STAGE_POINTS, STAGE_LABELS, fmtStage, computePickPoints, penaltyWinner, isGenuineDraw,
-  computeMatchdays, tournamentMatchday, initials, urlBase64ToUint8Array, StatusGlyph, liveMatchClock,
+  computeMatchdays, tournamentMatchday, initials, StatusGlyph, liveMatchClock,
 } from '@/app/components/playground-utils';
 import { avatarColor } from '@/lib/avatar-color';
 import { usePresence } from '@/lib/realtime/usePresence';
@@ -44,9 +45,17 @@ const TOURNAMENT_CATALOGUE = [
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: PlaygroundProps) {
-  // Avatar: a fresh upload overrides the server-provided value for instant feedback.
-  const [uploadedAvatar, setUploadedAvatar] = useState<string | null>(null);
-  const userAvatarUrl = uploadedAvatar ?? propAvatarUrl;
+  // The signed-in user's own profile + device settings (name, avatar, theme,
+  // default pick side, push) — owned by one hook, nothing here writes them.
+  const {
+    myAppUserId, displayName, firstName, lastName, setFirstName, setLastName,
+    savingName, handleNameBlur,
+    userAvatarUrl, setUploadedAvatar,
+    theme, changeTheme,
+    defaultPickSide, savingDefaultPick, saveDefaultPickSide,
+    pushSupported, pushEnabled, pushLoading, togglePush,
+    notificationPreferences, saveNotificationPreferences,
+  } = useProfile({ showNotice, propAvatarUrl });
 
   // ── Layout state ───────────────────────────────────────────────────────────
   const [leftNavOpen, setLeftNavOpen] = useState(true);
@@ -119,12 +128,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   const [myParticipantId, setMyParticipantId] = useState<string | null>(null);
   const [standing, setStanding] = useState<ParticipantStanding[]>([]);
   const [roundResults, setRoundResults] = useState<RoundResultEntry[]>([]);
-  const [myAppUserId, setMyAppUserId] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
   const [totalUnread, setTotalUnread] = useState(0);
-  const [savingName, setSavingName] = useState(false);
   // Opponent presence on the selected matchup. "Online" means they currently
   // have the app open and focused — presence is tracked only while the tab is
   // visible and is keyed by app user id (see usePresence).
@@ -133,15 +137,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     myAppUserId ?? '',
     { enabled: Boolean(selectedMatchupId && myAppUserId) },
   );
-  const [defaultPickSide, setDefaultPickSide] = useState<'HOME' | 'AWAY'>('HOME');
-  const [savingDefaultPick, setSavingDefaultPick] = useState(false);
-  const [theme, setTheme] = useState<'system' | 'light' | 'dark'>('system');
   const [onboardingStep, setOnboardingStep] = useState<number | null>(null); // null = hidden
-  const [pushSupported, setPushSupported] = useState(false);
-  const [pushEnabled, setPushEnabled] = useState(false);
-  const [pushLoading, setPushLoading] = useState(false);
-  const [notificationPreferences, setNotificationPreferences] = useState<import('@/app/components/profile-settings').NotificationPreferences | null>(null);
-  const swRegistration = useRef<ServiceWorkerRegistration | null>(null);
   const feedScrollRef = useRef<HTMLDivElement>(null);
   const autoScrolledMatchup = useRef<string | null>(null);
   // Pull-to-refresh (touch) on the fixture feed
@@ -515,7 +511,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     // Load fixtures immediately (no matchup needed) so users see the schedule right away
     loadCurrentRoundAndFixtures(undefined);
     loadMatchups();
-    loadProfile();
+    // (profile loads itself — see useProfile)
 
     // If the user tapped a "Pick Now" notification, activate the Pick Now filter
     if (typeof window !== 'undefined') {
@@ -604,15 +600,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     }
   }, []);
 
-  // Apply persisted theme on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('wc-theme') as 'system' | 'light' | 'dark' | null;
-    if (saved === 'light' || saved === 'dark' || saved === 'system') {
-      setTheme(saved);
-      applyThemeClass(saved);
-    }
-  }, []);
-
   // Scroll the fixture feed so the selected fixture sits just below the sticky
   // stage + matchday headers (not hidden behind them).
   useEffect(() => {
@@ -639,18 +626,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileView]);
-
-  // Register service worker and check existing push subscription
-  useEffect(() => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    setPushSupported(true);
-    navigator.serviceWorker.register('/sw.js').then((reg) => {
-      swRegistration.current = reg;
-      return reg.pushManager.getSubscription();
-    }).then((sub) => {
-      setPushEnabled(!!sub);
-    }).catch(() => {});
-  }, []);
 
   // 30s activity ping
   useEffect(() => {
@@ -679,33 +654,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   }, [drawerOpen, drawerTab, selectedMatchupId]);
 
   // ── Data fetchers ──────────────────────────────────────────────────────────
-
-  async function loadProfile() {
-    const res = await fetch('/api/user/profile', { cache: 'no-store' });
-    if (!res.ok) return;
-    const payload = await res.json();
-    if (payload.ok) {
-      setMyAppUserId(payload.id ?? null);
-      const name = payload.displayName ?? '';
-      setDisplayName(name);
-      const parts = name.trim().split(/\s+/);
-      setFirstName(parts[0] ?? '');
-      setLastName(parts.slice(1).join(' '));
-      setDefaultPickSide(payload.defaultPickSide ?? 'HOME');
-      if (payload.notificationPreferences) {
-        setNotificationPreferences(payload.notificationPreferences);
-      }
-    }
-  }
-
-  async function saveNotificationPreferences(prefs: import('@/app/components/profile-settings').NotificationPreferences) {
-    setNotificationPreferences(prefs);
-    await fetch('/api/user/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notificationPreferences: prefs }),
-    }).catch(() => {});
-  }
 
   async function loadMatchups() {
     setLoading(true);
@@ -1055,101 +1003,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       showNotice('error', `Could not create the match card — ${why}`);
     } finally {
       setSharingCard(false);
-    }
-  }
-
-  async function saveDisplayName() {
-    const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
-    setSavingName(true);
-    const res = await fetch('/api/user/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName: fullName })
-    });
-    const payload = await res.json();
-    setSavingName(false);
-    if (!res.ok || !payload.ok) {
-      showNotice('error', payload.error ?? 'Failed to save display name.');
-      return;
-    }
-    setDisplayName(fullName);
-    showNotice('ok', 'Name saved.');
-  }
-
-  function applyThemeClass(t: 'system' | 'light' | 'dark') {
-    const root = document.documentElement;
-    root.classList.remove('theme-light', 'theme-dark');
-    if (t === 'light') root.classList.add('theme-light');
-    if (t === 'dark') root.classList.add('theme-dark');
-  }
-
-  function changeTheme(t: 'system' | 'light' | 'dark') {
-    setTheme(t);
-    applyThemeClass(t);
-    localStorage.setItem('wc-theme', t);
-  }
-
-  function handleNameBlur() {
-    const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
-    if (!fullName || fullName === displayName) return;
-    saveDisplayName();
-  }
-
-  async function togglePush() {
-    const reg = swRegistration.current;
-    if (!reg) return;
-    setPushLoading(true);
-    try {
-      if (pushEnabled) {
-        const sub = await reg.pushManager.getSubscription();
-        if (sub) {
-          await fetch('/api/notifications/webpush/subscribe', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ endpoint: sub.endpoint }),
-          });
-          await sub.unsubscribe();
-        }
-        setPushEnabled(false);
-      } else {
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-          showNotice('error', 'Notification permission denied.');
-          return;
-        }
-        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidKey),
-        });
-        await fetch('/api/notifications/webpush/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subscription: sub }),
-        });
-        setPushEnabled(true);
-        showNotice('ok', 'Push notifications enabled.');
-      }
-    } catch (err) {
-      showNotice('error', 'Failed to update push notifications.');
-      console.error(err);
-    } finally {
-      setPushLoading(false);
-    }
-  }
-
-  async function saveDefaultPickSide(side: 'HOME' | 'AWAY') {
-    setSavingDefaultPick(true);
-    setDefaultPickSide(side);
-    const res = await fetch('/api/user/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ defaultPickSide: side })
-    });
-    const payload = await res.json();
-    setSavingDefaultPick(false);
-    if (!res.ok || !payload.ok) {
-      showNotice('error', payload.error ?? 'Failed to save default pick.');
     }
   }
 
