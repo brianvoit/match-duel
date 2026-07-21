@@ -9,13 +9,13 @@ import { PreMatchPanel } from '@/app/components/pre-match-panel';
 import { RecapPanel } from '@/app/components/recap-panel';
 import { SquadPanel } from '@/app/components/squad-panel';
 import { useFixtureDetailData } from '@/app/components/use-fixture-detail-data';
+import { useMatchups } from '@/app/components/use-matchups';
 import { useProfile } from '@/app/components/use-profile';
 import { ScoreChartModal } from '@/app/components/score-chart-modal';
 import { ProfileSettings } from '@/app/components/profile-settings';
 import { renderMatchShareCard, type ShareGoal } from '@/app/components/share-card';
 import {
-  Tournament, Matchup, Round, Fixture,
-  ParticipantStanding, RoundResultParticipant, RoundResultEntry,
+  Round, Fixture,
   TournamentFormFixture, MatchEvent,
   ContentTab, DrawerTab, MobileView, NoticeTone,
 } from '@/app/components/playground-types';
@@ -70,6 +70,24 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     urgent: number;
   }>>([]);
   const [notifSummaryLoading, setNotifSummaryLoading] = useState(false);
+
+  // Defined here (above useMatchups) because useMatchups prefetches it once the
+  // matchup rows land, and a useCallback can't be referenced before it exists.
+  const fetchNotifSummary = useCallback(async () => {
+    setNotifSummaryLoading(true);
+    try {
+      const res = await fetch('/api/notifications/summary', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifSummary(data.matchups ?? []);
+      }
+    } catch {
+      // non-fatal
+    } finally {
+      setNotifSummaryLoading(false);
+    }
+  }, []);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
   const [contentTab, setContentTab] = useState<ContentTab>('details');
@@ -112,12 +130,18 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   const [showTodayBtn, setShowTodayBtn] = useState(false);
 
   // ── Data state ─────────────────────────────────────────────────────────────
-  const [matchups, setMatchups] = useState<Matchup[]>([]);
-  // Desktop drag-to-reorder: a user-defined ordering of matchups, persisted locally.
-  const [matchupOrder, setMatchupOrder] = useState<string[]>([]);
-  const [dragMatchupId, setDragMatchupId] = useState<string | null>(null);
-  const [dragOverMatchupId, setDragOverMatchupId] = useState<string | null>(null);
-  const [selectedMatchupId, setSelectedMatchupId] = useState<string | null>(null);
+
+  // The user's matchups: the list, their chosen order, the current selection and
+  // its standings. Selection here is what the fixture/pick layer below keys off.
+  const {
+    matchups, orderedMatchups,
+    selectedMatchupId, setSelectedMatchupId, selectedMatchup, oppAvatarUrl,
+    dragMatchupId, setDragMatchupId, dragOverMatchupId, setDragOverMatchupId, reorderMatchups,
+    standing, roundResults, loadStandings, matchupScores,
+    tournaments, activeTournament,
+    loadMatchups,
+  } = useMatchups({ showNotice, setLoading, fetchNotifSummary, matchupDrawerOpen });
+
   const [selectedFixtureId, setSelectedFixtureId] = useState<string | null>(null);
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [allRounds, setAllRounds] = useState<Round[]>([]);
@@ -126,8 +150,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   const [pickOrder, setPickOrder] = useState<Record<string, string>>({});
   const [completedRoundFixtures, setCompletedRoundFixtures] = useState<Record<string, Fixture[]>>({});
   const [myParticipantId, setMyParticipantId] = useState<string | null>(null);
-  const [standing, setStanding] = useState<ParticipantStanding[]>([]);
-  const [roundResults, setRoundResults] = useState<RoundResultEntry[]>([]);
   const [totalUnread, setTotalUnread] = useState(0);
   // Opponent presence on the selected matchup. "Online" means they currently
   // have the app open and focused — presence is tracked only while the tab is
@@ -147,21 +169,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   const [refreshing, setRefreshing] = useState(false);
 
   // ── Derived ────────────────────────────────────────────────────────────────
-
-  // Unique tournaments derived from matchup data
-  // TODO: replace with /api/tournaments fetch once endpoint exists
-  const tournaments = useMemo<Tournament[]>(() => {
-    const seen = new Set<string>();
-    return matchups.reduce<Tournament[]>((acc, m) => {
-      if (!seen.has(m.tournamentId)) {
-        seen.add(m.tournamentId);
-        acc.push({ id: m.tournamentId, label: "FIFA World Cup '26" });
-      }
-      return acc;
-    }, []);
-  }, [matchups]);
-
-  const activeTournament = tournaments[0] ?? null;
 
   const hasLiveFixtures = useMemo(
     () => fixtures.some((f) => f.status === 'LIVE'),
@@ -215,55 +222,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       .reduce((sum, arr) => sum + arr.length, 0);
     return visibleFixtures.length + completedCount;
   }, [visibleFixtures.length, completedRoundFixtures]);
-
-  const selectedMatchup = useMemo(
-    () => matchups.find((m) => m.matchupId === selectedMatchupId) ?? null,
-    [matchups, selectedMatchupId]
-  );
-
-  const oppAvatarUrl = selectedMatchup?.opponentAvatarUrl ?? null;
-
-  // Load the saved matchup order after mount (avoids SSR/hydration mismatch).
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('matchup-order') || '[]');
-      if (Array.isArray(saved)) setMatchupOrder(saved.filter((x): x is string => typeof x === 'string'));
-    } catch { /* ignore */ }
-  }, []);
-
-  // Matchups in the user's chosen order; any not in the saved order fall to the end.
-  const orderedMatchups = useMemo(() => {
-    if (matchupOrder.length === 0) return matchups;
-    const rank = new Map(matchupOrder.map((id, i) => [id, i]));
-    return [...matchups].sort(
-      (a, b) => (rank.get(a.matchupId) ?? Infinity) - (rank.get(b.matchupId) ?? Infinity)
-    );
-  }, [matchups, matchupOrder]);
-
-  // Per-matchup live duel tallies (mine vs opponent), shown next to each row in
-  // the mobile matchup drawer. One call returns every matchup's live score
-  // (settled + in-progress), matching the top scorebug.
-  const [matchupScores, setMatchupScores] = useState<Record<string, { mine: number; opp: number }>>({});
-  useEffect(() => {
-    if (!matchupDrawerOpen) return;
-    let cancelled = false;
-    fetch('/api/matchups/tallies', { cache: 'no-store' })
-      .then(r => r.json())
-      .then(p => { if (!cancelled && p.ok) setMatchupScores(p.tallies ?? {}); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [matchupDrawerOpen]);
-
-  function reorderMatchups(fromId: string, toId: string) {
-    if (fromId === toId) return;
-    const ids = orderedMatchups.map((m) => m.matchupId);
-    const from = ids.indexOf(fromId);
-    const to = ids.indexOf(toId);
-    if (from < 0 || to < 0) return;
-    ids.splice(to, 0, ids.splice(from, 1)[0]);
-    setMatchupOrder(ids);
-    try { localStorage.setItem('matchup-order', JSON.stringify(ids)); } catch { /* ignore */ }
-  }
 
   const selectedFixture = useMemo(() => {
     if (!selectedFixtureId) return null;
@@ -411,23 +369,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     window.location.reload();
   }, []);
 
-  // ── Notification summary ───────────────────────────────────────────────────
-
-  const fetchNotifSummary = useCallback(async () => {
-    setNotifSummaryLoading(true);
-    try {
-      const res = await fetch('/api/notifications/summary', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setNotifSummary(data.matchups ?? []);
-      }
-    } catch {
-      // non-fatal
-    } finally {
-      setNotifSummaryLoading(false);
-    }
-  }, []);
-
   // Stable so ChatPanel's effects don't re-fire every render (an inline handler
   // here previously drove a /messages request loop).
   const handleChatMarkRead = useCallback(() => {
@@ -528,17 +469,14 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
 
   useEffect(() => {
     if (!selectedMatchupId) {
-      // Keep fixtures visible but clear pick/standing data
+      // Keep fixtures visible but clear pick data (useMatchups clears standings)
       setPickMap({});
       setPickOrder({});
       setMyParticipantId(null);
-      setStanding([]);
-      setRoundResults([]);
       return;
     }
-    // Reload fixtures with pick data overlaid + load standings for topbar H2H
+    // Reload fixtures with pick data overlaid
     loadCurrentRoundAndFixtures(selectedMatchupId);
-    loadStandings(selectedMatchupId);
     setMobileView('feed');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMatchupId]);
@@ -654,33 +592,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   }, [drawerOpen, drawerTab, selectedMatchupId]);
 
   // ── Data fetchers ──────────────────────────────────────────────────────────
-
-  async function loadMatchups() {
-    setLoading(true);
-    const res = await fetch('/api/matchups', { cache: 'no-store' });
-    const payload = await res.json();
-    if (!res.ok || !payload.ok) {
-      showNotice('error', payload.error ?? 'Failed to load matchups.');
-      setLoading(false);
-      return;
-    }
-    const rows = (payload.matchups ?? []) as Matchup[];
-    setMatchups(rows);
-    if (!selectedMatchupId && rows[0]?.matchupId) {
-      setSelectedMatchupId(rows[0].matchupId);
-    }
-    setLoading(false);
-    // Silently prefetch notification counts so bell badge is ready
-    fetchNotifSummary();
-  }
-
-  async function loadStandings(matchupId: string) {
-    const res = await fetch(`/api/matchups/${matchupId}/standings`, { cache: 'no-store' });
-    const payload = await res.json();
-    if (!res.ok || !payload.ok) return;
-    setStanding(payload.standing ?? []);
-    setRoundResults(payload.roundResults ?? []);
-  }
 
   // Pull-to-refresh: re-read the latest fixtures/standings from the server (the
   // background cron keeps the DB current within ~1 min, including settling any
