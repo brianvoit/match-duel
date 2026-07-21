@@ -100,6 +100,16 @@ export type TournamentForm = {
   awayFixtures: TournamentFormFixture[];
 };
 
+/** A past competitive meeting between the two teams, in OUR fixture's orientation. */
+export type H2HMeeting = {
+  year: number;
+  stage: string;
+  home: string;
+  away: string;
+  homeGoals: number | null;
+  awayGoals: number | null;
+};
+
 // ── Pre-match contextual data ──────────────────────────────────────────────────
 
 export type PreMatchPredictions = {

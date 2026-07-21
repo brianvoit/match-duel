@@ -8,14 +8,14 @@ import { FixtureDetailPanel } from '@/app/components/fixture-detail-panel';
 import { PreMatchPanel } from '@/app/components/pre-match-panel';
 import { RecapPanel } from '@/app/components/recap-panel';
 import { SquadPanel } from '@/app/components/squad-panel';
+import { useFixtureDetailData } from '@/app/components/use-fixture-detail-data';
 import { ScoreChartModal } from '@/app/components/score-chart-modal';
 import { ProfileSettings } from '@/app/components/profile-settings';
 import { renderMatchShareCard, type ShareGoal } from '@/app/components/share-card';
 import {
   Tournament, Matchup, Round, Fixture,
   ParticipantStanding, RoundResultParticipant, RoundResultEntry,
-  TournamentForm, TournamentFormFixture,
-  SquadData, RecapData, PreMatchData, EventsData, MatchEvent,
+  TournamentFormFixture, MatchEvent,
   ContentTab, DrawerTab, MobileView, NoticeTone,
 } from '@/app/components/playground-types';
 import {
@@ -149,16 +149,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   const pullDist = useRef(0);
   const [pullUI, setPullUI] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const [headToHead, setHeadToHead] = useState<{ year: number; stage: string; home: string; away: string; homeGoals: number | null; awayGoals: number | null }[]>([]);
-  const [h2hHome, setH2hHome] = useState<string>('');
-  const [h2hAway, setH2hAway] = useState<string>('');
-  const [teamForm, setTeamForm] = useState<TournamentForm | null>(null);
-  const [squadData, setSquadData] = useState<SquadData | null>(null);
-  const [squadLoading, setSquadLoading] = useState(false);
-  const [recapData, setRecapData] = useState<RecapData | null>(null);
-  const [recapLoading, setRecapLoading] = useState(false);
-  const [eventsData, setEventsData] = useState<EventsData | null>(null);
-  const [preMatchData, setPreMatchData] = useState<PreMatchData | null>(null);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -289,6 +279,19 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     }
     return null;
   }, [fixtures, completedRoundFixtures, selectedFixtureId]);
+
+  // Everything the detail panes render for the selected fixture (pre-match, H2H,
+  // form, squad, recap) — owned by one hook so selection is the only input.
+  const {
+    preMatchData, headToHead, h2hHome, h2hAway, teamForm,
+    squadData, squadLoading, recapData, recapLoading, eventsData,
+  } = useFixtureDetailData({
+    selectedFixtureId,
+    selectedMatchupId,
+    contentTab,
+    fixtureStatus: selectedFixture?.status,
+    fixtureStartsAt: selectedFixture?.startsAt,
+  });
 
   // First unpicked fixture that is my turn to pick (used for mobile auto-scroll)
   // First fixture on (or after) today, in the viewer's local time — the anchor we
@@ -609,102 +612,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       applyThemeClass(saved);
     }
   }, []);
-
-  // Fetch pre-match context whenever a fixture is selected
-  useEffect(() => {
-    if (!selectedFixtureId) { setPreMatchData(null); return; }
-    fetch(`/api/fixtures/${selectedFixtureId}/pre-match`, { cache: 'no-store' })
-      .then(r => r.json())
-      .then(d => { if (d.ok) setPreMatchData(d); })
-      .catch(() => {});
-  }, [selectedFixtureId]);
-
-  // Fetch head-to-head history whenever a fixture is selected
-  useEffect(() => {
-    if (!selectedFixtureId) { setHeadToHead([]); setH2hHome(''); setH2hAway(''); return; }
-    fetch(`/api/fixtures/${selectedFixtureId}/head-to-head`)
-      .then(r => r.json())
-      .then(d => { setHeadToHead(d.meetings ?? []); setH2hHome(d.home ?? ''); setH2hAway(d.away ?? ''); })
-      .catch(() => {});
-  }, [selectedFixtureId]);
-
-  // Fetch squad lineups when the Squad tab is active. Official lineups publish
-  // ~20-40 min before kickoff and can change late, so while the match is
-  // SCHEDULED and near kickoff we poll every 60s — lineups appear (and late
-  // changes surface) without the user having to reopen the tab. Silent refreshes
-  // don't flash the loading state or blank existing data.
-  useEffect(() => {
-    if (contentTab !== 'squad' || !selectedFixtureId) { setSquadData(null); return; }
-
-    let cancelled = false;
-
-    const fetchSquad = async (silent: boolean) => {
-      if (!silent) { setSquadLoading(true); setSquadData(null); }
-      try {
-        const d = await fetch(`/api/fixtures/${selectedFixtureId}/lineups`, { cache: 'no-store' }).then(r => r.json());
-        if (!cancelled) setSquadData(d);
-      } catch {
-        if (!cancelled && !silent) setSquadData({ available: false, reason: 'api_error', home: null, away: null });
-      } finally {
-        if (!cancelled && !silent) setSquadLoading(false);
-      }
-    };
-
-    fetchSquad(false);
-
-    let interval: ReturnType<typeof setInterval> | null = null;
-    const msToKickoff = selectedFixture?.startsAt ? new Date(selectedFixture.startsAt).getTime() - Date.now() : Infinity;
-    if (selectedFixture?.status === 'SCHEDULED' && msToKickoff < 90 * 60 * 1000) {
-      interval = setInterval(() => fetchSquad(true), 60_000);
-    }
-
-    return () => { cancelled = true; if (interval) clearInterval(interval); };
-  }, [contentTab, selectedFixtureId, selectedFixture?.status, selectedFixture?.startsAt]);
-
-  // Fetch match statistics + events when the Recap tab is active.
-  // While the match is LIVE, refresh on an interval so the timeline and stats
-  // keep up during play. Silent refreshes don't flash the loading state or blank
-  // the existing data. Backend caches LIVE stats/events for 2 min, so a 60s poll
-  // surfaces new data promptly without extra API cost (faster just re-reads cache).
-  useEffect(() => {
-    if (contentTab !== 'recap' || !selectedFixtureId) { setRecapData(null); setEventsData(null); return; }
-
-    let cancelled = false;
-
-    const fetchRecap = async (silent: boolean) => {
-      if (!silent) { setRecapLoading(true); setRecapData(null); setEventsData(null); }
-      try {
-        const [stats, events] = await Promise.all([
-          fetch(`/api/fixtures/${selectedFixtureId}/statistics`, { cache: 'no-store' }).then(r => r.json()),
-          fetch(`/api/fixtures/${selectedFixtureId}/events`,    { cache: 'no-store' }).then(r => r.json()),
-        ]);
-        if (cancelled) return;
-        setRecapData(stats);
-        setEventsData(events);
-      } catch {
-        // On a silent refresh, keep the last good data rather than wiping it to an error
-        if (!cancelled && !silent) {
-          setRecapData({ available: false, reason: 'api_error', homeTeam: null, awayTeam: null, stats: [] });
-        }
-      } finally {
-        if (!cancelled && !silent) setRecapLoading(false);
-      }
-    };
-
-    fetchRecap(false);
-
-    let interval: ReturnType<typeof setInterval> | null = null;
-    if (selectedFixture?.status === 'LIVE') {
-      // 15s while live. Backend caches LIVE stats/events for ~2 min, so most of
-      // these re-reads hit that cache rather than API-Football.
-      interval = setInterval(() => fetchRecap(true), 15_000);
-    }
-
-    return () => {
-      cancelled = true;
-      if (interval) clearInterval(interval);
-    };
-  }, [contentTab, selectedFixtureId, selectedFixture?.status]);
 
   // Scroll the fixture feed so the selected fixture sits just below the sticky
   // stage + matchday headers (not hidden behind them).
@@ -1841,22 +1748,11 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                                 data-fixture-id={f.id}
                                 aria-current={isSelected ? 'true' : undefined}
                                 onClick={() => {
+                                  // Selection is the only input — useFixtureDetailData
+                                  // refetches H2H/form/pre-match off selectedFixtureId.
                                   setSelectedFixtureId(f.id);
                                   setContentTab('details');
                                   setMobileView('content');
-                                  setHeadToHead([]);
-                                  setTeamForm(null);
-                                  fetch(`/api/fixtures/${f.id}/head-to-head`)
-                                    .then((r) => r.json())
-                                    .then((d) => { setHeadToHead(d.meetings ?? []); setH2hHome(d.home ?? ''); setH2hAway(d.away ?? ''); })
-                                    .catch(() => {});
-                                  const formUrl = selectedMatchupId
-                                    ? `/api/fixtures/${f.id}/form?matchupId=${selectedMatchupId}`
-                                    : `/api/fixtures/${f.id}/form`;
-                                  fetch(formUrl)
-                                    .then((r) => r.json())
-                                    .then((d) => { if (d.ok) setTeamForm(d); })
-                                    .catch(() => {});
                                 }}
                               >
                               {/* Group label + kickoff — time always shows; group only for group stage */}
@@ -2050,10 +1946,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 submitSinglePick={submitSinglePick}
                 setPickMap={setPickMap}
                 setSelectedFixtureId={setSelectedFixtureId}
-                setHeadToHead={setHeadToHead}
-                setTeamForm={setTeamForm}
-                setH2hHome={setH2hHome}
-                setH2hAway={setH2hAway}
               />
             )}
             {contentTab === 'squad' && (

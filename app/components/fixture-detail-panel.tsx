@@ -8,10 +8,8 @@ import {
   initials, StatusGlyph, liveMatchClock,
 } from '@/app/components/playground-utils';
 import type {
-  Fixture, Round, Matchup, PreMatchData, TournamentForm, TournamentFormFixture,
+  Fixture, Round, Matchup, PreMatchData, TournamentForm, TournamentFormFixture, H2HMeeting,
 } from '@/app/components/playground-types';
-
-type H2HMeeting = { year: number; stage: string; home: string; away: string; homeGoals: number | null; awayGoals: number | null };
 
 function ScoreBugForm({ form }: { form: string }) {
   const chars = form.split('').filter(c => 'WDL'.includes(c)).slice(-5);
@@ -57,10 +55,6 @@ interface FixtureDetailPanelProps {
   submitSinglePick: (fixtureId: string) => void;
   setPickMap: Dispatch<SetStateAction<Record<string, 'HOME' | 'AWAY'>>>;
   setSelectedFixtureId: Dispatch<SetStateAction<string | null>>;
-  setHeadToHead: Dispatch<SetStateAction<H2HMeeting[]>>;
-  setTeamForm: Dispatch<SetStateAction<TournamentForm | null>>;
-  setH2hHome: Dispatch<SetStateAction<string>>;
-  setH2hAway: Dispatch<SetStateAction<string>>;
 }
 
 // Extracted from Playground.renderFixtureDetail — a faithful move; the large prop
@@ -71,8 +65,7 @@ export function FixtureDetailPanel({
   completedRoundFixtures, allRounds, pickMap, pickOrder, myParticipantId, sharingCard,
   preMatchData, userAvatarUrl, oppAvatarUrl, displayName, userEmail, selectedMatchup,
   loading, teamForm, headToHead, h2hHome, h2hAway,
-  shareMatchCard, submitSinglePick, setPickMap, setSelectedFixtureId, setHeadToHead,
-  setTeamForm, setH2hHome, setH2hAway,
+  shareMatchCard, submitSinglePick, setPickMap, setSelectedFixtureId,
 }: FixtureDetailPanelProps) {
   if (!selectedMatchupId) {
     return (
@@ -359,17 +352,9 @@ export function FixtureDetailPanel({
               key={fc.id}
               className="wc-scorebug"
               onClick={() => {
+                // Selection is the only input — useFixtureDetailData refetches
+                // H2H/form/pre-match off selectedFixtureId.
                 setSelectedFixtureId(fc.id);
-                setHeadToHead([]);
-                setTeamForm(null);
-                fetch(`/api/fixtures/${fc.id}/head-to-head`)
-                  .then(r => r.json())
-                  .then(d => { setHeadToHead(d.meetings ?? []); setH2hHome(d.home ?? ''); setH2hAway(d.away ?? ''); })
-                  .catch(() => {});
-                const url = selectedMatchupId
-                  ? `/api/fixtures/${fc.id}/form?matchupId=${selectedMatchupId}`
-                  : `/api/fixtures/${fc.id}/form`;
-                fetch(url).then(r => r.json()).then(d => { if (d.ok) setTeamForm(d); }).catch(() => {});
               }}
             >
               <div className="wc-scorebug-group">
