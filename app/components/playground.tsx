@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { TEAM_INFO, teamCode, teamFlag } from '@/lib/data/teamInfo';
 import { ChatPanel } from '@/app/components/chat-panel';
@@ -10,6 +10,9 @@ import { RecapPanel } from '@/app/components/recap-panel';
 import { SquadPanel } from '@/app/components/squad-panel';
 import { useFixtureDetailData } from '@/app/components/use-fixture-detail-data';
 import { useMatchups } from '@/app/components/use-matchups';
+import { useMatchupActions } from '@/app/components/use-matchup-actions';
+import { useNotifications } from '@/app/components/use-notifications';
+import { usePullToRefresh } from '@/app/components/use-pull-to-refresh';
 import { useRoundFixtures } from '@/app/components/use-round-fixtures';
 import { useProfile } from '@/app/components/use-profile';
 import { ScoreChartModal } from '@/app/components/score-chart-modal';
@@ -61,33 +64,12 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   // ── Layout state ───────────────────────────────────────────────────────────
   const [leftNavOpen, setLeftNavOpen] = useState(true);
   const [matchupDrawerOpen, setMatchupDrawerOpen] = useState(false);
-  const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
-  const [notifSummary, setNotifSummary] = useState<Array<{
-    matchupId: string;
-    opponentName: string | null;
-    opponentAvatarUrl: string | null;
-    isPending: boolean;
-    total: number;
-    urgent: number;
-  }>>([]);
-  const [notifSummaryLoading, setNotifSummaryLoading] = useState(false);
 
-  // Defined here (above useMatchups) because useMatchups prefetches it once the
-  // matchup rows land, and a useCallback can't be referenced before it exists.
-  const fetchNotifSummary = useCallback(async () => {
-    setNotifSummaryLoading(true);
-    try {
-      const res = await fetch('/api/notifications/summary', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setNotifSummary(data.matchups ?? []);
-      }
-    } catch {
-      // non-fatal
-    } finally {
-      setNotifSummaryLoading(false);
-    }
-  }, []);
+  // The notification bell drawer. Called before useMatchups/useRoundFixtures:
+  // they take fetchNotifSummary as a param to prefetch the badge, so it has to
+  // exist first.
+  const { notifDrawerOpen, setNotifDrawerOpen, notifSummary, setNotifSummary, notifSummaryLoading, fetchNotifSummary } =
+    useNotifications();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
@@ -107,13 +89,7 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   // ── UI state ───────────────────────────────────────────────────────────────
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [joinCode, setJoinCode] = useState('');
-  const [joinOpen, setJoinOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null);
-  const [copyConfirmed, setCopyConfirmed] = useState(false);
   const [sharingCard, setSharingCard] = useState(false);
-  const [cancelMatchupId, setCancelMatchupId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const drawerRowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const drawerTouchStartX = useRef(0);
@@ -143,6 +119,15 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     loadMatchups,
   } = useMatchups({ showNotice, setLoading, fetchNotifSummary, matchupDrawerOpen });
 
+  // The create/join/cancel matchup modal flow — all three end by reloading the
+  // matchup list above.
+  const {
+    joinCode, setJoinCode, joinOpen, setJoinOpen,
+    createOpen, setCreateOpen, createdInviteCode, copyConfirmed,
+    cancelMatchupId, setCancelMatchupId,
+    createMatchup, copyInviteLink, closeCreateModal, cancelMatchup, joinMatchup,
+  } = useMatchupActions({ showNotice, setLoading, loadMatchups, selectedMatchupId, setSelectedMatchupId });
+
   // The round + fixture + pick layer — the core game state, keyed off the
   // selected matchup above. Drives the feed, scoring, locking and live polling.
   const {
@@ -165,11 +150,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   const [onboardingStep, setOnboardingStep] = useState<number | null>(null); // null = hidden
   const feedScrollRef = useRef<HTMLDivElement>(null);
   const autoScrolledMatchup = useRef<string | null>(null);
-  // Pull-to-refresh (touch) on the fixture feed
-  const pullStartY = useRef<number | null>(null);
-  const pullDist = useRef(0);
-  const [pullUI, setPullUI] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -510,81 +490,15 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   // Pull-to-refresh: re-read the latest fixtures/standings from the server (the
   // background cron keeps the DB current within ~1 min, including settling any
   // match that just finished). No full re-sync needed.
-  async function refreshFixtures() {
-    if (refreshing) return;
-    setRefreshing(true);
-    try {
-      if (selectedMatchupId) {
-        await Promise.all([loadCurrentRoundAndFixtures(selectedMatchupId), loadStandings(selectedMatchupId)]);
-      }
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  async function createMatchup() {
-    setLoading(true);
-    const res = await fetch('/api/matchups/invite', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
+  const { pullUI, refreshing, onTouchStart: onFeedTouchStart, onTouchMove: onFeedTouchMove, onTouchEnd: onFeedTouchEnd } =
+    usePullToRefresh({
+      feedScrollRef,
+      onRefresh: async () => {
+        if (selectedMatchupId) {
+          await Promise.all([loadCurrentRoundAndFixtures(selectedMatchupId), loadStandings(selectedMatchupId)]);
+        }
+      },
     });
-    const payload = await res.json();
-    setLoading(false);
-    if (!res.ok || !payload.ok) {
-      showNotice('error', payload.error ?? 'Failed to create matchup.');
-      return;
-    }
-    setCreatedInviteCode(payload.matchup.inviteCode);
-    await loadMatchups();
-  }
-
-  async function copyInviteLink(code: string) {
-    const link = `${window.location.origin}/join/${code}`;
-    await navigator.clipboard.writeText(link);
-    setCopyConfirmed(true);
-    setTimeout(() => setCopyConfirmed(false), 2000);
-  }
-
-  function closeCreateModal() {
-    setCreateOpen(false);
-    setCreatedInviteCode(null);
-    setCopyConfirmed(false);
-  }
-
-  async function cancelMatchup() {
-    if (!cancelMatchupId) return;
-    setLoading(true);
-    const res = await fetch(`/api/matchups/${cancelMatchupId}`, { method: 'DELETE' });
-    const payload = await res.json();
-    setLoading(false);
-    setCancelMatchupId(null);
-    if (!res.ok || !payload.ok) {
-      showNotice('error', payload.error ?? 'Failed to cancel matchup.');
-      return;
-    }
-    if (selectedMatchupId === cancelMatchupId) setSelectedMatchupId(null);
-    await loadMatchups();
-  }
-
-  async function joinMatchup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!joinCode.trim()) { showNotice('error', 'Enter an invite code.'); return; }
-    setLoading(true);
-    const code = joinCode.trim().toUpperCase();
-    const res = await fetch(`/api/matchups/invite/${code}/accept`, { method: 'POST' });
-    const payload = await res.json();
-    if (!res.ok || !payload.ok) {
-      showNotice('error', payload.error ?? 'Failed to join matchup.');
-      setLoading(false);
-      return;
-    }
-    setJoinCode('');
-    setJoinOpen(false);
-    showNotice('ok', payload.alreadyJoined ? 'Already in this matchup.' : 'Joined matchup!');
-    await loadMatchups();
-    setLoading(false);
-  }
 
   /**
    * Render the fixture as a shareable PNG and put it on the clipboard so it can
@@ -1164,30 +1078,9 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
             className="wc-feed-scroll"
             ref={feedScrollRef}
             onScroll={updateTodayBtn}
-            onTouchStart={(e) => {
-              const c = feedScrollRef.current;
-              pullStartY.current = c && c.scrollTop <= 0 ? e.touches[0].clientY : null;
-              pullDist.current = 0;
-            }}
-            onTouchMove={(e) => {
-              if (pullStartY.current === null || refreshing) return;
-              const c = feedScrollRef.current;
-              const dy = e.touches[0].clientY - pullStartY.current;
-              if (dy > 0 && c && c.scrollTop <= 0) {
-                pullDist.current = dy;
-                setPullUI(Math.min(dy, 90));
-              } else {
-                pullDist.current = 0;
-                setPullUI(0);
-              }
-            }}
-            onTouchEnd={() => {
-              const triggered = pullStartY.current !== null && pullDist.current > 60;
-              pullStartY.current = null;
-              pullDist.current = 0;
-              setPullUI(0);
-              if (triggered) refreshFixtures();
-            }}
+            onTouchStart={onFeedTouchStart}
+            onTouchMove={onFeedTouchMove}
+            onTouchEnd={onFeedTouchEnd}
           >
             {(pullUI > 0 || refreshing) && (
               <div className="wc-feed-pull" style={{ height: refreshing ? 36 : Math.min(pullUI, 60) }}>
