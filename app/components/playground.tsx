@@ -10,12 +10,13 @@ import { RecapPanel } from '@/app/components/recap-panel';
 import { SquadPanel } from '@/app/components/squad-panel';
 import { useFixtureDetailData } from '@/app/components/use-fixture-detail-data';
 import { useMatchups } from '@/app/components/use-matchups';
+import { useRoundFixtures } from '@/app/components/use-round-fixtures';
 import { useProfile } from '@/app/components/use-profile';
 import { ScoreChartModal } from '@/app/components/score-chart-modal';
 import { ProfileSettings } from '@/app/components/profile-settings';
 import { renderMatchShareCard, type ShareGoal } from '@/app/components/share-card';
 import {
-  Round, Fixture,
+  Fixture,
   TournamentFormFixture, MatchEvent,
   ContentTab, DrawerTab, MobileView, NoticeTone,
 } from '@/app/components/playground-types';
@@ -142,14 +143,16 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     loadMatchups,
   } = useMatchups({ showNotice, setLoading, fetchNotifSummary, matchupDrawerOpen });
 
-  const [selectedFixtureId, setSelectedFixtureId] = useState<string | null>(null);
-  const [currentRound, setCurrentRound] = useState<Round | null>(null);
-  const [allRounds, setAllRounds] = useState<Round[]>([]);
-  const [fixtures, setFixtures] = useState<Fixture[]>([]);
-  const [pickMap, setPickMap] = useState<Record<string, 'HOME' | 'AWAY'>>({});
-  const [pickOrder, setPickOrder] = useState<Record<string, string>>({});
-  const [completedRoundFixtures, setCompletedRoundFixtures] = useState<Record<string, Fixture[]>>({});
-  const [myParticipantId, setMyParticipantId] = useState<string | null>(null);
+  // The round + fixture + pick layer — the core game state, keyed off the
+  // selected matchup above. Drives the feed, scoring, locking and live polling.
+  const {
+    currentRound, allRounds, fixtures, completedRoundFixtures,
+    pickMap, setPickMap, pickOrder, myParticipantId,
+    selectedFixtureId, setSelectedFixtureId, selectedFixture,
+    hasLiveFixtures, provisionalPoints,
+    loadCurrentRoundAndFixtures, submitSinglePick,
+  } = useRoundFixtures({ selectedMatchupId, contentTab, showNotice, setLoading, fetchNotifSummary });
+
   const [totalUnread, setTotalUnread] = useState(0);
   // Opponent presence on the selected matchup. "Online" means they currently
   // have the app open and focused — presence is tracked only while the tab is
@@ -170,41 +173,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const hasLiveFixtures = useMemo(
-    () => fixtures.some((f) => f.status === 'LIVE'),
-    [fixtures]
-  );
-
-  // Live provisional points from the current round's FINAL fixtures. Official
-  // tournament_points only settle once a whole round completes, so without this
-  // the H2H scorebug would read 0–0 for the entire group stage. We add this
-  // running tally on top of already-settled rounds; once the round settles its
-  // fixtures leave `fixtures` (currentRound advances), so there's no double-count.
-  const provisionalPoints = useMemo(() => {
-    if (!currentRound) return { mine: 0, opp: 0 };
-    let mine = 0;
-    let opp = 0;
-    for (const f of fixtures) {
-      if (f.status !== 'FINAL') continue;
-      mine += computePickPoints(f, pickMap[f.id] ?? f.myPickSide, currentRound.stage) ?? 0;
-      opp  += computePickPoints(f, f.opponentPickSide, currentRound.stage) ?? 0;
-    }
-    return { mine, opp };
-  }, [fixtures, pickMap, currentRound]);
-
-  const canSubmit = useMemo(() => {
-    const unlocked = fixtures.filter((f) => !f.isLocked);
-    if (!unlocked.length) return false;
-    return unlocked.every((f) => Boolean(pickMap[f.id]));
-  }, [fixtures, pickMap]);
-
-  const pickedCount = useMemo(
-    () => fixtures.filter((f) => Boolean(pickMap[f.id])).length,
-    [fixtures, pickMap]
-  );
-
-  const lockedCount = useMemo(() => fixtures.filter((f) => f.isLocked).length, [fixtures]);
-
   // Filtered view for the feed
   const visibleFixtures = useMemo(() => {
     return fixtures.filter((f) => {
@@ -222,17 +190,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
       .reduce((sum, arr) => sum + arr.length, 0);
     return visibleFixtures.length + completedCount;
   }, [visibleFixtures.length, completedRoundFixtures]);
-
-  const selectedFixture = useMemo(() => {
-    if (!selectedFixtureId) return null;
-    const inCurrent = fixtures.find(f => f.id === selectedFixtureId);
-    if (inCurrent) return inCurrent;
-    for (const roundFix of Object.values(completedRoundFixtures)) {
-      const found = roundFix.find(f => f.id === selectedFixtureId);
-      if (found) return found;
-    }
-    return null;
-  }, [fixtures, completedRoundFixtures, selectedFixtureId]);
 
   // Everything the detail panes render for the selected fixture (pre-match, H2H,
   // form, squad, recap) — owned by one hook so selection is the only input.
@@ -449,10 +406,9 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
   }, [filterOpen]);
 
   useEffect(() => {
-    // Load fixtures immediately (no matchup needed) so users see the schedule right away
-    loadCurrentRoundAndFixtures(undefined);
+    // Fixtures load themselves (schedule on mount, picks on selection — see
+    // useRoundFixtures); profile loads itself (see useProfile).
     loadMatchups();
-    // (profile loads itself — see useProfile)
 
     // If the user tapped a "Pick Now" notification, activate the Pick Now filter
     if (typeof window !== 'undefined') {
@@ -467,18 +423,10 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Selecting a matchup drops mobile users onto the feed. (The fixture reload
+  // itself lives in useRoundFixtures, keyed on the same selection.)
   useEffect(() => {
-    if (!selectedMatchupId) {
-      // Keep fixtures visible but clear pick data (useMatchups clears standings)
-      setPickMap({});
-      setPickOrder({});
-      setMyParticipantId(null);
-      return;
-    }
-    // Reload fixtures with pick data overlaid
-    loadCurrentRoundAndFixtures(selectedMatchupId);
-    setMobileView('feed');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (selectedMatchupId) setMobileView('feed');
   }, [selectedMatchupId]);
 
   // Show scorebug hint once, after the first matchup with an opponent loads
@@ -494,40 +442,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     return () => { if (scorebugHintTimer.current) clearTimeout(scorebugHintTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMatchup?.matchupId]);
-
-  // Live score polling — 15s, only while a fixture in view is actually LIVE.
-  useEffect(() => {
-    if (contentTab !== 'details' || !selectedMatchupId || !hasLiveFixtures) return;
-    const interval = setInterval(async () => {
-      const res = await fetch(`/api/matchups/${selectedMatchupId}/live`, { cache: 'no-store' });
-      if (!res.ok) return;
-      const payload = await res.json();
-      if (!payload.ok) return;
-      const liveFixtures = (payload.fixtures ?? []) as Fixture[];
-      if (!liveFixtures.length) return;
-      setFixtures((prev) =>
-        prev.map((f) => {
-          const u = liveFixtures.find((lf) => lf.id === f.id);
-          if (!u) return f;
-          return {
-            ...f,
-            homeScore: u.homeScore,
-            awayScore: u.awayScore,
-            homePenScore: u.homePenScore,
-            awayPenScore: u.awayPenScore,
-            status: u.status,
-            elapsedMinute: u.elapsedMinute ?? null,
-            period: u.period ?? null,
-            lastSyncedAt: u.lastSyncedAt ?? f.lastSyncedAt,
-            isLocked: u.isLocked,
-            opponentPickSide: u.opponentPickSide ?? f.opponentPickSide
-          };
-        })
-      );
-    }, 15_000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentTab, selectedMatchupId, hasLiveFixtures]);
 
   // Show onboarding for new users arriving from invite link or first sign-in
   useEffect(() => {
@@ -608,89 +522,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     }
   }
 
-  async function loadCurrentRoundAndFixtures(matchupId = selectedMatchupId) {
-    if (!matchupId) return;
-    setLoading(true);
-    const roundRes = await fetch(`/api/rounds/current?matchupId=${matchupId}`, {
-      cache: 'no-store'
-    });
-    const roundPayload = await roundRes.json();
-    if (!roundRes.ok || !roundPayload.ok) {
-      showNotice('error', roundPayload.error ?? 'Failed to load round.');
-      setLoading(false);
-      return;
-    }
-    const round = (roundPayload.currentRound as Round | null) ?? null;
-    setCurrentRound(round);
-    const rounds = (roundPayload.rounds as Round[] | null) ?? [];
-    setAllRounds(rounds);
-
-    // Background-fetch fixtures for every OTHER round so the whole bracket shows
-    // in the feed read-only: earlier rounds (history, or rounds a late matchup
-    // didn't play) and future rounds (the knockout bracket filling in as group /
-    // knockout results land — visible to everyone, early or late).
-    const otherRounds = rounds.filter(r => r.id !== round?.id);
-    if (otherRounds.length > 0) {
-      Promise.all(
-        otherRounds.map(async (r) => {
-          const url = matchupId
-            ? `/api/rounds/${r.id}/fixtures?matchupId=${matchupId}`
-            : `/api/rounds/${r.id}/fixtures`;
-          const res = await fetch(url, { cache: 'no-store' });
-          const payload = await res.json();
-          return { roundId: r.id, fixtures: (payload.fixtures ?? []) as Fixture[] };
-        })
-      ).then((results) => {
-        const map: Record<string, Fixture[]> = {};
-        for (const { roundId, fixtures } of results) map[roundId] = fixtures;
-        setCompletedRoundFixtures(map);
-      }).catch(() => {});
-    } else {
-      setCompletedRoundFixtures({});
-    }
-
-    if (!round) {
-      setFixtures([]);
-      setPickMap({});
-      setLoading(false);
-      return;
-    }
-    const fixtureUrl = matchupId
-      ? `/api/rounds/${round.id}/fixtures?matchupId=${matchupId}`
-      : `/api/rounds/${round.id}/fixtures`;
-    const pickOrderUrl = matchupId
-      ? `/api/matchups/${matchupId}/rounds/${round.id}/pick-order`
-      : null;
-    const fetches: Promise<Response>[] = [fetch(fixtureUrl, { cache: 'no-store' })];
-    if (pickOrderUrl) fetches.push(fetch(pickOrderUrl, { cache: 'no-store' }));
-    const [fixtureRes, pickOrderRes] = await Promise.all(fetches);
-    const fixturePayload = await fixtureRes.json();
-    if (!fixtureRes.ok || !fixturePayload.ok) {
-      showNotice('error', fixturePayload.error ?? 'Failed to load fixtures.');
-      setLoading(false);
-      return;
-    }
-    const rows = (fixturePayload.fixtures ?? []) as Fixture[];
-    setFixtures(rows);
-    const nextPickMap: Record<string, 'HOME' | 'AWAY'> = {};
-    for (const f of rows) {
-      if (f.myPickSide) nextPickMap[f.id] = f.myPickSide;
-    }
-    setPickMap(nextPickMap);
-    if (pickOrderRes?.ok) {
-      const pickOrderPayload = await pickOrderRes.json();
-      if (pickOrderPayload.ok) {
-        const order: Record<string, string> = {};
-        for (const entry of pickOrderPayload.pickOrder ?? []) {
-          order[entry.fixtureId] = entry.firstPickerParticipantId;
-        }
-        setPickOrder(order);
-        setMyParticipantId(pickOrderPayload.myParticipantId ?? null);
-      }
-    }
-    setLoading(false);
-  }
-
   async function createMatchup() {
     setLoading(true);
     const res = await fetch('/api/matchups/invite', {
@@ -753,65 +584,6 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
     showNotice('ok', payload.alreadyJoined ? 'Already in this matchup.' : 'Joined matchup!');
     await loadMatchups();
     setLoading(false);
-  }
-
-  async function submitPicks() {
-    if (!selectedMatchupId || !currentRound) {
-      showNotice('error', 'Select a matchup first.');
-      return;
-    }
-    const editableFixtures = fixtures.filter((f) => !f.isLocked);
-    const picks = editableFixtures
-      .map((f) => ({ fixtureId: f.id, side: pickMap[f.id] }))
-      .filter((p): p is { fixtureId: string; side: 'HOME' | 'AWAY' } => Boolean(p.side));
-    if (!picks.length) { showNotice('error', 'No unlocked picks selected.'); return; }
-    setLoading(true);
-    const res = await fetch(
-      `/api/matchups/${selectedMatchupId}/rounds/${currentRound.id}/picks`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ picks })
-      }
-    );
-    const payload = await res.json();
-    if (!res.ok || !payload.ok) {
-      showNotice('error', payload.error ?? 'Failed to submit picks.');
-      setLoading(false);
-      return;
-    }
-    showNotice('ok', `${picks.length} picks saved!`);
-    await loadCurrentRoundAndFixtures();
-    setLoading(false);
-    fetchNotifSummary();
-  }
-
-  async function submitSinglePick(fixtureId: string) {
-    if (!selectedMatchupId || !currentRound) {
-      showNotice('error', 'Select a matchup first.');
-      return;
-    }
-    const side = pickMap[fixtureId];
-    if (!side) { showNotice('error', 'Choose a team first.'); return; }
-    setLoading(true);
-    const res = await fetch(
-      `/api/matchups/${selectedMatchupId}/rounds/${currentRound.id}/picks`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ picks: [{ fixtureId, side }] })
-      }
-    );
-    const payload = await res.json();
-    if (!res.ok || !payload.ok) {
-      showNotice('error', payload.error ?? 'Failed to save pick.');
-      setLoading(false);
-      return;
-    }
-    showNotice('ok', 'Pick saved!');
-    await loadCurrentRoundAndFixtures();
-    setLoading(false);
-    fetchNotifSummary();
   }
 
   /**
