@@ -8,6 +8,7 @@ import { FixtureDetailPanel } from '@/app/components/fixture-detail-panel';
 import { PreMatchPanel } from '@/app/components/pre-match-panel';
 import { RecapPanel } from '@/app/components/recap-panel';
 import { SquadPanel } from '@/app/components/squad-panel';
+import { StatsPanel } from '@/app/components/stats-panel';
 import { useFixtureDetailData } from '@/app/components/use-fixture-detail-data';
 import { useMatchups } from '@/app/components/use-matchups';
 import { useMatchupActions } from '@/app/components/use-matchup-actions';
@@ -1321,7 +1322,14 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 aria-pressed={contentTab === 'details'}
                 onClick={() => setContentTab('details')}
               >
-                Match Details
+                Match
+              </button>
+              <button
+                className="wc-content-tab"
+                aria-pressed={contentTab === 'stats'}
+                onClick={() => setContentTab('stats')}
+              >
+                Stats
               </button>
               <button
                 className="wc-content-tab"
@@ -1375,6 +1383,13 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 submitSinglePick={submitSinglePick}
                 setPickMap={setPickMap}
                 setSelectedFixtureId={setSelectedFixtureId}
+              />
+            )}
+            {contentTab === 'stats' && (
+              <StatsPanel
+                selectedFixture={selectedFixture}
+                recapData={recapData}
+                recapLoading={recapLoading}
               />
             )}
             {contentTab === 'squad' && (

@@ -130,13 +130,17 @@ export function useFixtureDetailData(params: {
     return () => { cancelled = true; if (interval) clearInterval(interval); };
   }, [contentTab, selectedFixtureId, fixtureStatus, fixtureStartsAt]);
 
-  // Match statistics + events when the Recap tab is active. While the match is LIVE,
-  // refresh on an interval so the timeline and stats keep up during play. Silent
-  // refreshes don't flash the loading state or blank the existing data. Backend
-  // caches LIVE stats/events for 2 min, so a 15s poll surfaces new data promptly
-  // without extra API cost (faster just re-reads cache).
+  // Match statistics + events when the Stats or Recap tab is active — one fetch
+  // covers both (Stats reads the stat bars, Recap reads the event timeline).
+  // While the match is LIVE, refresh on an interval so the timeline and stats
+  // keep up during play. Silent refreshes don't flash the loading state or
+  // blank the existing data. Backend caches LIVE stats/events for 2 min, so a
+  // 15s poll surfaces new data promptly without extra API cost (faster just
+  // re-reads cache).
   useEffect(() => {
-    if (contentTab !== 'recap' || !selectedFixtureId) { setRecapData(null); setEventsData(null); return; }
+    if ((contentTab !== 'recap' && contentTab !== 'stats') || !selectedFixtureId) {
+      setRecapData(null); setEventsData(null); return;
+    }
 
     let cancelled = false;
 

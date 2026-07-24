@@ -234,7 +234,7 @@ export type SquadData = {
   away: TeamLineup | null;
 };
 
-export type ContentTab = 'details' | 'squad' | 'recap';
+export type ContentTab = 'details' | 'stats' | 'squad' | 'recap';
 export type DrawerTab = 'chat' | 'calendar';
 export type MobileView = 'home' | 'feed' | 'content' | 'chat' | 'profile';
 export type NoticeTone = 'ok' | 'error' | 'info';
