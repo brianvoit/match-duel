@@ -3523,7 +3523,6 @@ select {
   color: var(--text-2);
 }
 
-/* Recap team heading reset */
 /* Timeline penalty/event-type subtitle */
 .wc-timeline-event-type {
   display: block;
@@ -3537,10 +3536,6 @@ select {
 
 .wc-timeline-event-type--missed {
   color: var(--danger);
-}
-
-.wc-recap-team {
-  margin: 0;
 }
 
 /* ── Recap / Statistics ──────────────────────────────────────────────────────── */
@@ -3662,25 +3657,67 @@ select {
 .wc-pk-mark--scored { background: var(--ok); }
 .wc-pk-mark--missed { background: var(--danger); }
 
-.wc-recap-header {
+/* Shared team-identity header — Stats, Squad, and Recap all render the same
+   MatchHeader component, sourced from the fixture's home/away (never a
+   provider payload's own labeling), so the two sides never swap between tabs. */
+.wc-match-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 14px 12px;
   gap: 8px;
 }
 
-.wc-recap-team {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--text-0);
-  display: flex;
-  align-items: center;
-  gap: 5px;
+.wc-match-header--padded {
+  padding: 0 14px 12px;
 }
 
-.wc-recap-team--home { flex-direction: row; }
-.wc-recap-team--away { flex-direction: row-reverse; }
+.wc-match-header-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wc-match-header-side--away {
+  flex-direction: row-reverse;
+}
+
+.wc-match-header-flag {
+  font-size: 1.6rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.wc-match-header-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.wc-match-header-side--away .wc-match-header-text {
+  align-items: flex-end;
+}
+
+.wc-match-header-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.wc-match-header-meta {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
 
 .wc-recap-stats {
   display: flex;
@@ -3769,98 +3806,7 @@ select {
   padding: 16px;
 }
 
-/* ── Coaches / team identity on top ─────────────────────────────────────── */
-.wc-squad-heads {
-  display: flex;
-  gap: 12px;
-}
-
-.wc-squad-head {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;  /* identity outer, coach toward centre */
-  gap: 8px;
-}
-
-.wc-squad-head--away {
-  flex-direction: row-reverse;
-}
-
-.wc-squad-head-id {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.wc-squad-head--away .wc-squad-head-id {
-  flex-direction: row-reverse;
-}
-
-.wc-squad-head-flag {
-  font-size: 1.6rem;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.wc-squad-head-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.wc-squad-head--away .wc-squad-head-text {
-  align-items: flex-end;
-}
-
-.wc-squad-head-name {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text-0);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-.wc-squad-head-meta {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-2);
-  letter-spacing: 0.02em;
-}
-
-/* Coach — sits on the inner edge of each header, toward the centre line. */
-.wc-squad-head-coach {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex-shrink: 1;
-}
-
-.wc-squad-head--away .wc-squad-head-coach {
-  align-items: flex-end;
-  text-align: right;
-}
-
-.wc-squad-head-coach-name {
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--text-1);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-/* On narrow screens cap the coach so the team name keeps priority (avoids
-   truncating "Mexico" to "Me…"). */
-@media (max-width: 600px) {
-  .wc-squad-head-coach { flex: 0 1 auto; min-width: 0; }
-  .wc-squad-head-coach-name { max-width: 68px; }
-}
+/* Team identity on top — see .wc-match-header (shared with Stats/Recap). */
 
 /* ── One combined, opposing field ───────────────────────────────────────── */
 /* Mobile: vertical — home half on top (GK→attack), away half below

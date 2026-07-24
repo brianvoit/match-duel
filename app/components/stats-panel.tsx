@@ -1,6 +1,6 @@
 'use client';
 
-import { teamFlag } from '@/lib/data/teamInfo';
+import { MatchHeader } from '@/app/components/match-header';
 import type { Fixture, RecapData } from '@/app/components/playground-types';
 
 interface StatsPanelProps {
@@ -37,8 +37,6 @@ export function StatsPanel({ selectedFixture, recapData, recapLoading }: StatsPa
   }
 
   const statsAvailable = recapData?.available === true;
-  const homeTeam = recapData?.homeTeam ?? selectedFixture.homeTeam;
-  const awayTeam = recapData?.awayTeam ?? selectedFixture.awayTeam;
   const stats = recapData?.stats ?? [];
   const isFinal = selectedFixture.status === 'FINAL';
 
@@ -50,15 +48,7 @@ export function StatsPanel({ selectedFixture, recapData, recapLoading }: StatsPa
 
   return (
     <div className="wc-recap">
-      {/* Team header on top, like the Squad tab */}
-      <div className="wc-recap-header">
-        <h2 className="wc-recap-team wc-recap-team--home">
-          {teamFlag(homeTeam ?? '')} {homeTeam}
-        </h2>
-        <h2 className="wc-recap-team wc-recap-team--away">
-          {awayTeam} {teamFlag(awayTeam ?? '')}
-        </h2>
-      </div>
+      <MatchHeader selectedFixture={selectedFixture} padded />
 
       {!statsAvailable || stats.length === 0 ? (
         <p className="wc-subtitle" style={{ fontSize: '0.82rem', textAlign: 'center', margin: '8px 0' }}>

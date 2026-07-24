@@ -1,6 +1,7 @@
 'use client';
 
 import { teamFlag } from '@/lib/data/teamInfo';
+import { MatchHeader } from '@/app/components/match-header';
 import type { Fixture, RecapData, EventsData } from '@/app/components/playground-types';
 
 interface RecapPanelProps {
@@ -170,6 +171,7 @@ export function RecapPanel({ selectedFixture, recapData, eventsData, recapLoadin
 
   return (
     <div className="wc-recap">
+      <MatchHeader selectedFixture={selectedFixture} padded />
 
       {/* ── Match timeline ──────────────────────────────────────────── */}
       {enhancedTimeline.length > 0 && (() => {

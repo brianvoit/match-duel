@@ -1,6 +1,6 @@
 'use client';
 
-import { teamFlag } from '@/lib/data/teamInfo';
+import { MatchHeader } from '@/app/components/match-header';
 import type { Fixture, SquadData } from '@/app/components/playground-types';
 
 interface SquadPanelProps {
@@ -85,24 +85,9 @@ export function SquadPanel({ selectedFixture, squadData, squadLoading }: SquadPa
     </div>
   );
 
-  // Coaches sit on the INNER edge of each header (toward the centre); team
-  // identity (flag + name + formation) stays on the outer edge.
-  const renderHead = (lineup: NonNullable<SquadData['home']>, side: 'home' | 'away') => (
-    <div className={`wc-squad-head wc-squad-head--${side}`}>
-      <div className="wc-squad-head-id">
-        <span className="wc-squad-head-flag">{teamFlag(lineup.teamName)}</span>
-        <div className="wc-squad-head-text">
-          <span className="wc-squad-head-name">{lineup.teamName}</span>
-          <span className="wc-squad-head-meta">{lineup.formation}</span>
-        </div>
-      </div>
-      {lineup.coachName && (
-        <div className="wc-squad-head-coach">
-          <span className="wc-squad-head-coach-name">{lineup.coachName}</span>
-        </div>
-      )}
-    </div>
-  );
+  // Formation + coach on one meta line under the team name.
+  const headMeta = (lineup: SquadData['home']) =>
+    lineup ? [lineup.formation, lineup.coachName].filter(Boolean).join(' · ') : null;
 
   const posLabel = (pos: string | null) => (
     pos ? ({ g: 'Goalkeeper', d: 'Defender', m: 'Midfielder', f: 'Forward' }[pos.toLowerCase()] ?? pos) : null
@@ -151,11 +136,7 @@ export function SquadPanel({ selectedFixture, squadData, squadLoading }: SquadPa
 
   return (
     <div className="wc-squad">
-      {/* Coaches / team identity on top */}
-      <div className="wc-squad-heads">
-        {home && renderHead(home, 'home')}
-        {away && renderHead(away, 'away')}
-      </div>
+      <MatchHeader selectedFixture={selectedFixture} homeMeta={headMeta(home)} awayMeta={headMeta(away)} />
 
       {/* One combined, opposing field */}
       <div className="wc-squad-field">
