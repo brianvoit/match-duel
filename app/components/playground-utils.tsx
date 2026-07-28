@@ -109,6 +109,52 @@ export function computeMatchdays(
   return map;
 }
 
+/**
+ * Date range shown beside a round's name, derived from the round's actual
+ * fixtures. The `round` row's own starts_at/ends_at can't be used: starts_at is
+ * a planned window seeded before the real schedule landed, and ends_at is
+ * overwritten with the wall-clock moment settlement ran — so the pair drifts
+ * from (and can even invert against) when the matches were really played.
+ *
+ * Days are the viewer's LOCAL calendar days, matching the matchday convention
+ * above, so a late kickoff that crosses midnight UTC still reads as the day the
+ * viewer actually watched it.
+ *
+ *   single day  → "July 18"
+ *   same month  → "July 9 – 11"
+ *   spans month → "June 28 – July 3"
+ */
+export function formatRoundDateRange(
+  fixtures: { startsAt: string }[] | null | undefined
+): string | null {
+  if (!fixtures?.length) return null;
+
+  let min = Infinity;
+  let max = -Infinity;
+  for (const f of fixtures) {
+    const t = new Date(f.startsAt).getTime();
+    if (Number.isNaN(t)) continue;
+    if (t < min) min = t;
+    if (t > max) max = t;
+  }
+  if (min === Infinity) return null;
+
+  const start = new Date(min);
+  const end = new Date(max);
+  const monthName = (d: Date) => d.toLocaleDateString('en-US', { month: 'long' });
+
+  const sameMonth =
+    start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+
+  if (sameMonth && start.getDate() === end.getDate()) {
+    return `${monthName(start)} ${start.getDate()}`;
+  }
+  // Repeat the month only when the round crosses one.
+  return sameMonth
+    ? `${monthName(start)} ${start.getDate()} – ${end.getDate()}`
+    : `${monthName(start)} ${start.getDate()} – ${monthName(end)} ${end.getDate()}`;
+}
+
 export function initials(name: string | null | undefined, fallback = '?') {
   const str = name?.trim();
   if (!str) return fallback;

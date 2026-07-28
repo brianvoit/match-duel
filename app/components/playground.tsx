@@ -27,6 +27,7 @@ import {
 import {
   STAGE_POINTS, STAGE_LABELS, fmtStage, computePickPoints, penaltyWinner, isGenuineDraw,
   computeMatchdays, tournamentMatchday, initials, StatusGlyph, liveMatchClock,
+  formatRoundDateRange,
 } from '@/app/components/playground-utils';
 import { avatarColor } from '@/lib/avatar-color';
 import { usePresence } from '@/lib/realtime/usePresence';
@@ -1107,6 +1108,11 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                 const roundFixtures: Fixture[] | null = isCurrentRound
                   ? visibleFixtures
                   : (completedRoundFixtures[round.id] ?? null);
+                // Header dates come from the round's UNFILTERED fixtures — the list
+                // below may be filtered, but the header describes the whole round.
+                const roundDates = formatRoundDateRange(
+                  isCurrentRound ? fixtures : completedRoundFixtures[round.id]
+                );
                 const hasFilters = !!(filterStage || hideMyPicks || hideOpponentPicks);
                 if (filterStage && round.stage !== filterStage) return null;
 
@@ -1116,13 +1122,8 @@ export function Playground({ userEmail, userAvatarUrl: propAvatarUrl }: Playgrou
                     <div className="wc-round-section-header">
                       <h2 className="wc-round-section-title">{fmtStage(round.stage)}</h2>
                       {beforeJoin && <span className="wc-round-section-tag">Before you joined</span>}
-                      {round.starts_at && (
-                        <span className="wc-round-section-date">
-                          {new Date(round.starts_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
-                          {round.ends_at && round.ends_at !== round.starts_at
-                            ? ` – ${new Date(round.ends_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`
-                            : ''}
-                        </span>
+                      {roundDates && (
+                        <span className="wc-round-section-date">{roundDates}</span>
                       )}
                     </div>
 
